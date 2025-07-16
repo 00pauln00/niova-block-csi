@@ -1,0 +1,19 @@
+nisds:
+  - uuid: "nisd-uuid-1"
+    ipaddr: "192.168.1.100"
+    port: 8080
+    devicePath: "/dev/nvme0n1"
+    totalSize: 1099511627776  # 1TB in bytes
+    availableSize: 1099511627776
+  - uuid: "nisd-uuid-2"
+    ipaddr: "192.168.1.101"
+    port: 8080
+    devicePath: "/dev/nvme1n1"
+    totalSize: 2199023255552  # 2TB in bytes
+    availableSize: 2199023255552
+  - uuid: "nisd-uuid-3"
+    ipaddr: "192.168.1.102"
+    port: 8080
+    devicePath: "/dev/nvme2n1"
+    totalSize: 549755813888   # 512GB in bytes
+    availableSize: 549755813888
