@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: niova-csi-node
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: niova-csi-node
+  template:
+    metadata:
+      labels:
+        app: niova-csi-node
+    spec:
+      serviceAccountName: niova-csi-sa
+      hostPID: true
+      containers:
+        - name: niova-csi
+          image: paro1618/niova-csi:node
+          securityContext:
+            privileged: true
+            capabilities:
+              add:
+                - CAP_SYS_ADMIN
+                - CAP_SYS_RESOURCE
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: true
+          imagePullPolicy: Always
+          command: ["/bin/sh", "-c"]
+          args:
+            - ulimit -l unlimited && exec /opt/niova/niova-block-csi-node -driver-name=csi.niova.com -version=0.1.0 -node-id=$(NODE_ID) -endpoint=unix:///csi/custom.sock
+          env:
+            - name: NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          terminationMessagePath: /tmp/termination-log
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: registration-dir
+              mountPath: /registration
+            - name: niova-var-dir
+              mountPath: /var/niova
+              mountPropagation: Bidirectional
+            - name: niova-block
+              mountPath: /niova-block
+            - name: host-dev
+              mountPath: /dev
+              mountPropagation: HostToContainer
+            - name: host-sys
+              mountPath: /sys
+            - name: host-mount
+              mountPath: /run
+              mountPropagation: Bidirectional
+            - name: lib-modules
+              mountPath: /lib/modules
+            - name: kubelet-dir
+              mountPath: /var/lib/kubelet/plugins
+              mountPropagation: Bidirectional
+            - name: mountpoint-dir
+              mountPath: /var/lib/kubelet/pods
+              mountPropagation: Bidirectional
+            - name: mount-kb
+              mountPath: /var/lib/kubelet
+            - name: nisd-config
+              mountPath: /etc/niova
+              mountPropagation: Bidirectional
+
+        - name: driver-registrar
+          image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.8.0
+          args:
+            - "--csi-address=/csi/custom.sock"
+            - "--kubelet-registration-path=/var/lib/kubelet/plugins/csi.niova.com/custom.sock"
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: registration-dir
+              mountPath: /registration
+
+      volumes:
+        - name: plugin-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/csi.niova.com
+            type: DirectoryOrCreate
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry
+            type: Directory
+        - name: niova-var-dir
+          hostPath:
+            path: /var/niova
+            type: DirectoryOrCreate
+        - name: niova-block
+          hostPath:
+            path: /root/niova-block
+            type: DirectoryOrCreate
+        - name: host-dev
+          hostPath:
+            path: /dev
+        - name: host-sys
+          hostPath:
+            path: /sys
+        - name: host-mount
+          hostPath:
+            path: /run
+        - name: lib-modules
+          hostPath:
+            path: /lib/modules
+        - name: kubelet-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins
+        - name: mountpoint-dir
+          hostPath:
+            path: /var/lib/kubelet/pods
+        - name: mount-kb
+          hostPath:
+            path: /var/lib/kubelet
+        - name: nisd-config
+          hostPath:
+            path: /etc/niova
+
