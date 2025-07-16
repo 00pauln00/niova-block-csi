@@ -8,7 +8,16 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
+)
+
+var (
+	QUEUEDEPTH    = "128"
+	MAXBUFSIZE    = "1048576"
+	ldLibraryPath = "/usr/local/lib"
+	workingDir    = "/var/niova"
 )
 
 type UblkManager struct {
@@ -21,28 +30,42 @@ func NewUblkManager() *UblkManager {
 	}
 }
 
-func (um *UblkManager) CreateUblkDevice(volumeID, nisdIPAddr string, nisdPort int, devicePath string) (string, error) {
+func (um *UblkManager) CreateUblkDevice(volumeID, nisdIPAddr string, nisdPort int, devicePath, volumesize string, nisdUUID string) (string, error) {
 	klog.Infof("Creating ublk device for volume %s using NISD %s:%d, device %s",
 		volumeID, nisdIPAddr, nisdPort, devicePath)
 
-	// Generate a unique ublk device ID based on volume ID
-	ublkID := um.generateUblkID(volumeID)
-
-	// Expected ublk device path
-	ublkDevicePath := fmt.Sprintf("/dev/ublk%s", ublkID)
-
-	// Command to create niova-ublk device
-	// XXX Add the cmd for ublk
-	//klog.Infof("Executing command: %s", cmd.String())
-
-	output, err := cmd.CombinedOutput()
+	beforeublkDevices, err := lsblkDevices()
 	if err != nil {
-		return "", fmt.Errorf("failed to create ublk device: %v, output: %s", err, string(output))
+		return "", status.Errorf(codes.Internal, "failed to list devices before start: %v", err)
 	}
 
-	// Wait for device to be available
-	if err := um.waitForDevice(ublkDevicePath, 10*time.Second); err != nil {
-		return "", fmt.Errorf("ublk device %s not available after creation: %v", ublkDevicePath, err)
+	nisdtPath := prepareTargetPath(nisdUUID, nisdIPAddr, nisdPort)
+
+	// Command to create niova-ublk device
+	// Format: niova-ublk -v <ublk_id> -u <ublk_id> -t tcp:<nisd_uuid>:<nisd_ip>:<nisd_port> -q <queuedepth> -b <bufsize>
+
+	cmd := exec.Command(um.ublkBinary,
+		"-s", volumesize,
+		"-t", nisdtPath,
+		"-v", volumeID,
+		"-u", volumeID,
+		"-q", QUEUEDEPTH,
+		"-b", MAXBUFSIZE,
+	)
+	cmd.Env = append(cmd.Env,
+		fmt.Sprintf("LD_LIBRARY_PATH=%s", ldLibraryPath),
+		fmt.Sprintf("NIOVA_BLOCK_TCP_PEER_PORT=%d", nisdPort),
+	)
+	cmd.Dir = workingDir
+	if err := cmd.Start(); err != nil {
+		return "", status.Errorf(codes.Internal, "failed to start ublk: %v", err)
+	}
+
+	klog.Infof("Executing command: %s", cmd.String())
+
+	ublkDevicePath, err := waitForDevice(beforeublkDevices)
+	if err != nil {
+		return "", err
 	}
 
 	klog.Infof("Successfully created ublk device %s for volume %s", ublkDevicePath, volumeID)
@@ -75,6 +98,17 @@ func (um *UblkManager) DeleteUblkDevice(volumeID, ublkDevicePath string) error {
 	return nil
 }
 
+func prepareTargetPath(nisdUUID, nisdIPAddr string, nisdPort int) string {
+	// nisduuid := tcp:<nisd_uuid>:<nisd_ip>:<nisd_port>
+	var tPath string
+	if nisdIPAddr != "" {
+		tPath = fmt.Sprintf("tcp:%s:%s:%d", nisdUUID, nisdIPAddr, nisdPort+1)
+	} else {
+		tPath = fmt.Sprintf("tcp:%s:127.0.0.1:%d", nisdUUID, nisdPort+1)
+	}
+	return tPath
+}
+
 func (um *UblkManager) IsUblkDeviceActive(ublkDevicePath string) bool {
 	if _, err := os.Stat(ublkDevicePath); err != nil {
 		return false
@@ -100,15 +134,34 @@ func (um *UblkManager) extractUblkID(ublkDevicePath string) string {
 	return ""
 }
 
-func (um *UblkManager) waitForDevice(devicePath string, timeout time.Duration) error {
-	start := time.Now()
-	for time.Since(start) < timeout {
-		if _, err := os.Stat(devicePath); err == nil {
-			return nil
-		}
-		time.Sleep(100 * time.Millisecond)
+func waitForDevice(beforeublkdevices []string) (string, error) {
+	var ublkPath string
+	existing := make(map[string]bool)
+	for _, dev := range beforeublkdevices {
+		existing[dev] = true
 	}
-	return fmt.Errorf("timeout waiting for device %s", devicePath)
+	for {
+		time.Sleep(1 * time.Second)
+		afterDevices, err := lsblkDevices()
+		if err != nil {
+			return "", fmt.Errorf("failed to list devices after start: %v", err)
+		}
+		for _, dev := range afterDevices {
+			if !existing[dev] {
+				ublkPath = dev
+				break
+			}
+		}
+		fmt.Println(" after ublk lsblk: ", afterDevices)
+		fmt.Println(" any new device created: ", ublkPath)
+		if ublkPath != "" {
+			break
+		}
+	}
+	if ublkPath == "" {
+		return "", status.Errorf(codes.DeadlineExceeded, "timeout waiting for ublk device to appear")
+	}
+	return ublkPath, nil
 }
 
 func (um *UblkManager) GetUblkDeviceInfo(ublkDevicePath string) (map[string]string, error) {
@@ -143,4 +196,32 @@ func (um *UblkManager) GetUblkDeviceInfo(ublkDevicePath string) (map[string]stri
 	}
 
 	return info, nil
+}
+
+func lsblkDevices() ([]string, error) {
+	out, err := exec.Command("lsblk", "-n", "-o", "NAME,MOUNTPOINT").Output()
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println(" output of lsblk: ", out)
+	lines := strings.Split(string(out), "\n")
+	var devices []string
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+
+		name := fields[0]
+		mountpoint := ""
+		if len(fields) > 1 {
+			mountpoint = fields[1]
+		}
+
+		if strings.HasPrefix(name, "ublkb") && mountpoint == "" {
+			fmt.Println(" only spec devices: /dev/%s", name)
+			devices = append(devices, "/dev/"+name)
+		}
+	}
+	return devices, nil
 }
