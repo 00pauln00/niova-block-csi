@@ -17,7 +17,7 @@ type ConfigManager struct {
 	nisdConfigPath     string
 	volumeTrackingPath string
 	controller         *types.Controller
-	mutex              sync.RWMutex
+	Mutex              sync.RWMutex
 }
 
 func NewConfigManager(nisdConfigPath, volumeTrackingPath string) *ConfigManager {
@@ -31,8 +31,8 @@ func NewConfigManager(nisdConfigPath, volumeTrackingPath string) *ConfigManager 
 }
 
 func (cm *ConfigManager) LoadNisdConfig() error {
-	cm.mutex.Lock()
-	defer cm.mutex.Unlock()
+	cm.Mutex.Lock()
+	defer cm.Mutex.Unlock()
 
 	data, err := ioutil.ReadFile(cm.nisdConfigPath)
 	if err != nil {
@@ -64,14 +64,14 @@ func (cm *ConfigManager) LoadNisdConfig() error {
 }
 
 func (cm *ConfigManager) GetController() *types.Controller {
-	cm.mutex.RLock()
-	defer cm.mutex.RUnlock()
+	cm.Mutex.Lock()
+	defer cm.Mutex.Unlock()
 	return cm.controller
 }
 
 func (cm *ConfigManager) FindNisdWithSpace(requiredSize int64) (*types.Nisd, error) {
-	cm.mutex.RLock()
-	defer cm.mutex.RUnlock()
+	cm.Mutex.RLock()
+	defer cm.Mutex.RUnlock()
 
 	for _, nisd := range cm.controller.NisdMap {
 		if nisd.Info.AvailableSize >= requiredSize {
@@ -82,8 +82,6 @@ func (cm *ConfigManager) FindNisdWithSpace(requiredSize int64) (*types.Nisd, err
 }
 
 func (cm *ConfigManager) UpdateNisdAvailableSize(nisdUUID string, sizeChange int64) error {
-	cm.mutex.Lock()
-	defer cm.mutex.Unlock()
 
 	nisd, exists := cm.controller.NisdMap[nisdUUID]
 	if !exists {
@@ -94,26 +92,22 @@ func (cm *ConfigManager) UpdateNisdAvailableSize(nisdUUID string, sizeChange int
 	if nisd.Info.AvailableSize < 0 {
 		nisd.Info.AvailableSize = 0
 	}
-
 	return nil
 }
 
 func (cm *ConfigManager) AddVolume(volume *types.Volume) error {
-	cm.mutex.Lock()
-	defer cm.mutex.Unlock()
+	cm.Mutex.Lock()
+	defer cm.Mutex.Unlock()
 
 	nisd, exists := cm.controller.NisdMap[volume.NisdInfo.UUID.String()]
 	if !exists {
 		return fmt.Errorf("NISD with UUID %s not found", volume.NisdInfo.UUID.String())
 	}
-
 	nisd.VolMap[volume.VolID.String()] = volume
 	return cm.saveVolumeTracking()
 }
 
 func (cm *ConfigManager) RemoveVolume(volumeID string) error {
-	cm.mutex.Lock()
-	defer cm.mutex.Unlock()
 
 	for _, nisd := range cm.controller.NisdMap {
 		if vol, exists := nisd.VolMap[volumeID]; exists {
@@ -126,8 +120,6 @@ func (cm *ConfigManager) RemoveVolume(volumeID string) error {
 }
 
 func (cm *ConfigManager) GetVolume(volumeID string) (*types.Volume, error) {
-	cm.mutex.RLock()
-	defer cm.mutex.RUnlock()
 
 	for _, nisd := range cm.controller.NisdMap {
 		if vol, exists := nisd.VolMap[volumeID]; exists {
@@ -138,8 +130,8 @@ func (cm *ConfigManager) GetVolume(volumeID string) (*types.Volume, error) {
 }
 
 func (cm *ConfigManager) UpdateVolumeStatus(volumeID string, status types.VolumeStatus, nodeName string) error {
-	cm.mutex.Lock()
-	defer cm.mutex.Unlock()
+	cm.Mutex.Lock()
+	defer cm.Mutex.Unlock()
 
 	for _, nisd := range cm.controller.NisdMap {
 		if vol, exists := nisd.VolMap[volumeID]; exists {
@@ -189,8 +181,8 @@ func (cm *ConfigManager) saveVolumeTracking() error {
 }
 
 func (cm *ConfigManager) LoadVolumeTracking() error {
-	cm.mutex.Lock()
-	defer cm.mutex.Unlock()
+	cm.Mutex.Lock()
+	defer cm.Mutex.Unlock()
 
 	if _, err := os.Stat(cm.volumeTrackingPath); os.IsNotExist(err) {
 		klog.Info("Volume tracking file does not exist, starting fresh")

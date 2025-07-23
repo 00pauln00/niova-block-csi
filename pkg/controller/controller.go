@@ -89,11 +89,13 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create volume: %v", err))
 	}
 
+	cs.config.Mutex.Lock()
 	// Update NISD available size
 	if err := cs.config.UpdateNisdAvailableSize(nisd.Info.UUID.String(), -volumeSize); err != nil {
 		klog.Errorf("Failed to update NISD available size: %v", err)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to update NISD size: %v", err))
 	}
+	cs.config.Mutex.Unlock()
 
 	klog.Infof("Created volume %s of size %d bytes on NISD %s", volumeID.String(), volumeSize, nisd.Info.UUID.String())
 
@@ -112,6 +114,8 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 }
 
 func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
+	cs.config.Mutex.Lock()
+	defer cs.config.Mutex.Unlock()
 	klog.Infof("DeleteVolume: called with args %+v", req)
 
 	if req.GetVolumeId() == "" {
@@ -119,6 +123,7 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	}
 
 	volumeID := req.GetVolumeId()
+	cs.config.controller.cs.config.controller.NisdMap.VolMap.UblkPath
 
 	// Get volume info
 	volume, err := cs.config.GetVolume(volumeID)
@@ -153,11 +158,13 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 	nodeID := req.GetNodeId()
 
 	// Get volume info
+	cs.config.Mutex.Lock()
 	volume, err := cs.config.GetVolume(volumeID)
 	if err != nil {
 		klog.Errorf("Volume %s not found: %v", volumeID, err)
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume %s not found", volumeID))
 	}
+	cs.config.Mutex.Unlock()
 
 	// Update volume status to attached
 	if err := cs.config.UpdateVolumeStatus(volumeID, types.VolumeStatusAttached, nodeID); err != nil {
@@ -186,13 +193,14 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 	}
 
 	volumeID := req.GetVolumeId()
-
+	cs.config.Mutex.Lock()
 	// Check if volume exists
 	_, err := cs.config.GetVolume(volumeID)
 	if err != nil {
 		klog.Warningf("Volume %s not found, considering it already detached", volumeID)
 		return &csi.ControllerUnpublishVolumeResponse{}, nil
 	}
+	cs.config.Mutex.Unlock()
 
 	// Update volume status to detached
 	if err := cs.config.UpdateVolumeStatus(volumeID, types.VolumeStatusDetached, ""); err != nil {
@@ -217,10 +225,12 @@ func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 	}
 
 	// Check if volume exists
+	cs.config.Mutex.Lock()
 	_, err := cs.config.GetVolume(req.GetVolumeId())
 	if err != nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume %s not found", req.GetVolumeId()))
 	}
+	cs.config.Mutex.Unlock()
 
 	// For now, we support all requested capabilities
 	return &csi.ValidateVolumeCapabilitiesResponse{

@@ -8,8 +8,8 @@ import (
 	"sync"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/google/uuid"
 	"github.com/niova-block-csi/pkg/types"
-    "github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
@@ -66,20 +66,16 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Error(codes.InvalidArgument, "Volume capability cannot be empty")
 	}
 
-    klog.Infof("get volume id %s: ", req.GetVolumeId())
-    klog.Infof("get staging path id %s: ", req.GetStagingTargetPath())
-
 	volumeID := req.GetVolumeId()
 	stagingPath := req.GetStagingTargetPath()
 	publishContext := req.GetPublishContext()
-    klog.Infof("PublishContext received: %+v", publishContext)
 
 	// Extract NISD information from publish context
 	nisdIPAddr := publishContext["nisdIPAddr"]
 	nisdPortStr := publishContext["nisdPort"]
 	devicePath := publishContext["devicePath"]
 	volumeSizeStr := publishContext["volumeSize"]
-    nisduuid := publishContext["nisdUUID"]
+	nisduuid := publishContext["nisdUUID"]
 
 	if nisdIPAddr == "" || nisdPortStr == "" || devicePath == "" {
 		return nil, status.Error(codes.InvalidArgument, "Missing required publish context information")
@@ -107,7 +103,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 
 	// Create ublk device
-	ublkDevicePath, err := ns.ublkManager.CreateUblkDevice(volumeID, nisdIPAddr, nisdPort, devicePath, volumeSizeStr, nisduuid)
+	ublkDevicePath, ublkpid, err := ns.ublkManager.CreateUblkDevice(volumeID, nisdIPAddr, nisdPort, devicePath, volumeSizeStr, nisduuid)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create ublk device: %v", err))
 	}
@@ -123,7 +119,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	// Format and mount the ublk device to staging path
 	if err := ns.mountManager.FormatAndMountDevice(ublkDevicePath, stagingPath, fsType); err != nil {
 		// Cleanup ublk device on failure
-		ns.ublkManager.DeleteUblkDevice(volumeID, ublkDevicePath)
+		ns.ublkManager.DeleteUblkDevice(volumeID, ublkDevicePath, ublkpid)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to mount device: %v", err))
 	}
 
@@ -131,7 +127,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	volUUID, err := uuid.Parse(volumeID)
 	if err != nil {
 		klog.Errorf("Failed to parse volume ID %s: %v", volumeID, err)
-		ns.ublkManager.DeleteUblkDevice(volumeID, ublkDevicePath)
+		ns.ublkManager.DeleteUblkDevice(volumeID, ublkDevicePath, ublkpid)
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid volume ID format: %v", err))
 	}
 
@@ -145,6 +141,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		},
 		NodeInfo:    ns.nodeID,
 		UblkPath:    ublkDevicePath,
+		UblkPid:     ublkpid,
 		Status:      types.VolumeStatusAttached,
 		StagingPath: stagingPath,
 	}
@@ -185,7 +182,7 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 
 	// Delete ublk device if it exists
 	if nodeVol.UblkPath != "" {
-		if err := ns.ublkManager.DeleteUblkDevice(volumeID, nodeVol.UblkPath); err != nil {
+		if err := ns.ublkManager.DeleteUblkDevice(volumeID, nodeVol.UblkPath, nodeVol.UblkPid); err != nil {
 			klog.Errorf("Failed to delete ublk device %s: %v", nodeVol.UblkPath, err)
 		}
 	}
