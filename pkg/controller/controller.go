@@ -123,7 +123,6 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	}
 
 	volumeID := req.GetVolumeId()
-	cs.config.controller.cs.config.controller.NisdMap.VolMap.UblkPath
 
 	// Get volume info
 	volume, err := cs.config.GetVolume(volumeID)
