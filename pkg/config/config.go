@@ -31,6 +31,7 @@ func NewConfigManager(nisdConfigPath, volumeTrackingPath string) *ConfigManager 
 }
 
 func (cm *ConfigManager) LoadNisdConfig() error {
+
 	cm.Mutex.Lock()
 	defer cm.Mutex.Unlock()
 
@@ -96,8 +97,6 @@ func (cm *ConfigManager) UpdateNisdAvailableSize(nisdUUID string, sizeChange int
 }
 
 func (cm *ConfigManager) AddVolume(volume *types.Volume) error {
-	cm.Mutex.Lock()
-	defer cm.Mutex.Unlock()
 
 	nisd, exists := cm.controller.NisdMap[volume.NisdInfo.UUID.String()]
 	if !exists {
@@ -130,8 +129,6 @@ func (cm *ConfigManager) GetVolume(volumeID string) (*types.Volume, error) {
 }
 
 func (cm *ConfigManager) UpdateVolumeStatus(volumeID string, status types.VolumeStatus, nodeName string) error {
-	cm.Mutex.Lock()
-	defer cm.Mutex.Unlock()
 
 	for _, nisd := range cm.controller.NisdMap {
 		if vol, exists := nisd.VolMap[volumeID]; exists {
