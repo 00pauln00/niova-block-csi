@@ -5,7 +5,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -30,13 +32,13 @@ func NewUblkManager() *UblkManager {
 	}
 }
 
-func (um *UblkManager) CreateUblkDevice(volumeID, nisdIPAddr string, nisdPort int, devicePath, volumesize string, nisdUUID string) (string, error) {
+func (um *UblkManager) CreateUblkDevice(volumeID, nisdIPAddr string, nisdPort int, devicePath, volumesize string, nisdUUID string) (string, int, error) {
 	klog.Infof("Creating ublk device for volume %s using NISD %s:%d, device %s",
 		volumeID, nisdIPAddr, nisdPort, devicePath)
 
 	beforeublkDevices, err := lsblkDevices()
 	if err != nil {
-		return "", status.Errorf(codes.Internal, "failed to list devices before start: %v", err)
+		return "", -1, status.Errorf(codes.Internal, "failed to list devices before start: %v", err)
 	}
 
 	nisdtPath := prepareTargetPath(nisdUUID, nisdIPAddr, nisdPort)
@@ -58,40 +60,26 @@ func (um *UblkManager) CreateUblkDevice(volumeID, nisdIPAddr string, nisdPort in
 	)
 	cmd.Dir = workingDir
 	if err := cmd.Start(); err != nil {
-		return "", status.Errorf(codes.Internal, "failed to start ublk: %v", err)
+		return "", -1, status.Errorf(codes.Internal, "failed to start ublk: %v", err)
 	}
 
 	klog.Infof("Executing command: %s", cmd.String())
 
 	ublkDevicePath, err := waitForDevice(beforeublkDevices)
 	if err != nil {
-		return "", err
+		return "", -1, err
 	}
 
 	klog.Infof("Successfully created ublk device %s for volume %s", ublkDevicePath, volumeID)
-	return ublkDevicePath, nil
+	return ublkDevicePath, cmd.Process.Pid, nil
 }
 
-func (um *UblkManager) DeleteUblkDevice(volumeID, ublkDevicePath string) error {
+func (um *UblkManager) DeleteUblkDevice(volumeID, ublkDevicePath string, ublkPid int) error {
 	klog.Infof("Deleting ublk device %s for volume %s", ublkDevicePath, volumeID)
 
-	// Extract ublk ID from device path
-	ublkID := um.extractUblkID(ublkDevicePath)
-	if ublkID == "" {
-		return fmt.Errorf("invalid ublk device path: %s", ublkDevicePath)
-	}
-
-	// Command to delete niova-ublk device
-	// Format: niova-ublk -i <ublk_id> --delete
-	cmd := exec.Command(um.ublkBinary,
-		"-i", ublkID,
-		"--delete")
-
-	klog.Infof("Executing command: %s", cmd.String())
-
-	output, err := cmd.CombinedOutput()
+	err := killByNameIfExists(ublkPid)
 	if err != nil {
-		return fmt.Errorf("failed to delete ublk device: %v, output: %s", err, string(output))
+		return fmt.Errorf("failed to delete ublk device: %v", err)
 	}
 
 	klog.Infof("Successfully deleted ublk device %s for volume %s", ublkDevicePath, volumeID)
@@ -129,7 +117,7 @@ func (um *UblkManager) extractUblkID(ublkDevicePath string) string {
 	// Extract ublk ID from device path like /dev/ublk123 -> 123
 	base := filepath.Base(ublkDevicePath)
 	if strings.HasPrefix(base, "ublk") {
-		return strings.TrimPrefix(base, "ublk")
+		return strings.TrimPrefix(base, "ublkb")
 	}
 	return ""
 }
@@ -152,8 +140,6 @@ func waitForDevice(beforeublkdevices []string) (string, error) {
 				break
 			}
 		}
-		fmt.Println(" after ublk lsblk: ", afterDevices)
-		fmt.Println(" any new device created: ", ublkPath)
 		if ublkPath != "" {
 			break
 		}
@@ -203,7 +189,6 @@ func lsblkDevices() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(" output of lsblk: ", out)
 	lines := strings.Split(string(out), "\n")
 	var devices []string
 	for _, line := range lines {
@@ -219,9 +204,35 @@ func lsblkDevices() ([]string, error) {
 		}
 
 		if strings.HasPrefix(name, "ublkb") && mountpoint == "" {
-			fmt.Println(" only spec devices: /dev/%s", name)
 			devices = append(devices, "/dev/"+name)
 		}
 	}
 	return devices, nil
+}
+
+func killByNameIfExists(pid int) error {
+	// Step 1: Check if the process exists and is accessible
+	err := syscall.Kill(pid, 0)
+	if err != nil {
+		switch err {
+		case syscall.ESRCH:
+			klog.Infof("Process %d does not exist.", pid)
+			return nil // Not an error — nothing to kill
+		case syscall.EPERM:
+			klog.Infof("Process %d exists but you don't have permission to kill it.", pid)
+			return nil // Not an error — just can't kill it
+		default:
+			return fmt.Errorf("error checking PID %d: %v", pid, err)
+		}
+	}
+
+	// Step 2: Kill the process
+	klog.Infof("Killing process with PID %d...", pid)
+	killCmd := exec.Command("kill", "-9", strconv.Itoa(pid))
+	if err := killCmd.Run(); err != nil {
+		return fmt.Errorf("failed to kill process %d: %v", pid, err)
+	}
+
+	klog.Infof("Successfully killed process %d.", pid)
+	return nil
 }

@@ -32,6 +32,7 @@ type Volume struct {
 	VolID      uuid.UUID    `yaml:"volumeID" json:"volumeID"`
 	NisdInfo   NisdInfo     `yaml:"nisdInfo" json:"nisdInfo"`
 	Size       int64        `yaml:"volumeSize" json:"volumeSize"`
+	Path       string       `yaml:"volumePath" json:"volumePath"`
 	NodeName   string       `yaml:"nodeName" json:"nodeName"`
 	Status     VolumeStatus `yaml:"status" json:"status"`
 	CreatedAt  time.Time    `yaml:"createdAt" json:"createdAt"`
@@ -47,6 +48,7 @@ type NodeVolume struct {
 	NisdInfo    NisdInfo     `yaml:"nisdInfo" json:"nisdInfo"`
 	NodeInfo    string       `yaml:"nodeInfo" json:"nodeInfo"`
 	UblkPath    string       `yaml:"ublkPath" json:"ublkPath"`
+	UblkPid     int          `yaml:"ublkPid" json:"ublkPid"`
 	Status      VolumeStatus `yaml:"status" json:"status"`
 	StagingPath string       `yaml:"stagingPath" json:"stagingPath"`
 	TargetPath  string       `yaml:"targetPath" json:"targetPath"`

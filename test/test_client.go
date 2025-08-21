@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"k8s.io/klog/v2"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 )
@@ -20,7 +20,7 @@ func main() {
 		grpc.WithTimeout(5*time.Second),
 	)
 	if err != nil {
-		log.Fatalf("Failed to connect to CSI driver: %v", err)
+		fmt.Errorf("Failed to connect to CSI driver: %v", err)
 	}
 	defer conn.Close()
 
@@ -31,10 +31,9 @@ func main() {
 
 	resp, err := client.GetPluginInfo(ctx, &csi.GetPluginInfoRequest{})
 	if err != nil {
-		log.Fatalf("GetPluginInfo failed: %v", err)
+		fmt.Errorf("GetPluginInfo failed: %v", err)
 	}
 
-	fmt.Printf("✅ Plugin Name: %s\n", resp.GetName())
-	fmt.Printf("✅ Plugin Version: %s\n", resp.GetVendorVersion())
+	klog.Infof("Plugin Name: %s", resp.GetName())
+	klog.Infof("Plugin Version: %s", resp.GetVendorVersion())
 }
-
