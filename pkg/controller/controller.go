@@ -83,14 +83,14 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 	cs.config.Mutex.Lock()
 	// Add volume to config manager
-	if err := cs.config.AddVolume(volume); err != nil {
+	if err := cs.config.AddVolumeLocked(volume); err != nil {
 		klog.Errorf("Failed to add volume to config: %v", err)
 		cs.config.Mutex.Unlock()
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create volume: %v", err))
 	}
 
 	// Update NISD available size
-	if err := cs.config.UpdateNisdAvailableSize(nisd.Info.UUID.String(), -volumeSize); err != nil {
+	if err := cs.config.UpdateNisdAvailableSizeLocked(nisd.Info.UUID.String(), -volumeSize); err != nil {
 		klog.Errorf("Failed to update NISD available size: %v", err)
 		cs.config.Mutex.Unlock()
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to update NISD size: %v", err))

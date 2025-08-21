@@ -82,7 +82,7 @@ func (cm *ConfigManager) FindNisdWithSpace(requiredSize int64) (*types.Nisd, err
 	return nil, fmt.Errorf("no NISD with sufficient space (%d bytes) found", requiredSize)
 }
 
-func (cm *ConfigManager) UpdateNisdAvailableSize(nisdUUID string, sizeChange int64) error {
+func (cm *ConfigManager) UpdateNisdAvailableSizeLocked(nisdUUID string, sizeChange int64) error {
 
 	nisd, exists := cm.controller.NisdMap[nisdUUID]
 	if !exists {
@@ -96,7 +96,7 @@ func (cm *ConfigManager) UpdateNisdAvailableSize(nisdUUID string, sizeChange int
 	return nil
 }
 
-func (cm *ConfigManager) AddVolume(volume *types.Volume) error {
+func (cm *ConfigManager) AddVolumeLocked(volume *types.Volume) error {
 
 	nisd, exists := cm.controller.NisdMap[volume.NisdInfo.UUID.String()]
 	if !exists {
@@ -111,7 +111,7 @@ func (cm *ConfigManager) RemoveVolume(volumeID string) error {
 	for _, nisd := range cm.controller.NisdMap {
 		if vol, exists := nisd.VolMap[volumeID]; exists {
 			delete(nisd.VolMap, volumeID)
-			cm.UpdateNisdAvailableSize(vol.NisdInfo.UUID.String(), vol.Size)
+			cm.UpdateNisdAvailableSizeLocked(vol.NisdInfo.UUID.String(), vol.Size)
 			return cm.saveVolumeTracking()
 		}
 	}
