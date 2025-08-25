@@ -1,6 +1,7 @@
 package types
 
 import (
+	cpClient "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/client"
 	"github.com/google/uuid"
 	"time"
 )
@@ -15,12 +16,17 @@ const (
 )
 
 type NisdInfo struct {
-	UUID          uuid.UUID `yaml:"uuid" json:"uuid"`
-	IPAddr        string    `yaml:"ipaddr" json:"ipaddr"`
-	Port          int       `yaml:"port" json:"port"`
-	DevicePath    string    `yaml:"devicePath" json:"devicePath"`
-	TotalSize     int64     `yaml:"totalSize" json:"totalSize"`
-	AvailableSize int64     `yaml:"availableSize" json:"availableSize"`
+	UUID   uuid.UUID `yaml:"uuid" json:"uuid"`
+	IPAddr string    `yaml:"ipaddr" json:"ipaddr"`
+	Port   int       `yaml:"port" json:"port"`
+	// DevicePath    string    `yaml:"devicePath" json:"devicePath"`
+	// TotalSize     int64     `yaml:"totalSize" json:"totalSize"`
+	// AvailableSize int64     `yaml:"availableSize" json:"availableSize"`
+}
+
+type VolumeReq struct {
+	VolumeName string
+	VolumeSize int64
 }
 
 type Nisd struct {
@@ -40,7 +46,8 @@ type Volume struct {
 }
 
 type Controller struct {
-	NisdMap map[string]*Nisd `yaml:"nisdMap" json:"nisdMap"`
+	NisdMap  map[string]*Nisd `yaml:"nisdMap" json:"nisdMap"`
+	cpclient *cpClient.CliCFuncs
 }
 
 type NodeVolume struct {
