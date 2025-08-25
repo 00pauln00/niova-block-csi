@@ -65,7 +65,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	// Find NISD with available space
-	nisd, err := cs.config.FindNisdWithSpace(volumeSize)
+	nisd, err := cs.config.FindNisdWithSpace(req.GetName(), volumeSize)
 	if err != nil {
 		klog.Errorf("Failed to find NISD with sufficient space: %v", err)
 		return nil, status.Error(codes.ResourceExhausted, err.Error())

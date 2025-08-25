@@ -7,6 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	cpClient "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/client"
+	"github.com/google/uuid"
 	"github.com/niova-block-csi/pkg/config"
 	"github.com/niova-block-csi/pkg/driver"
 	"k8s.io/klog/v2"
@@ -14,8 +16,9 @@ import (
 
 var (
 	endpoint           = flag.String("endpoint", "unix:///var/lib/kubelet/plugins/niova-block-csi/csi.sock", "CSI endpoint")
+	raftID             = flag.String("r", "", "pass the raft uuid")
 	nodeID             = flag.String("node-id", "", "Node ID")
-	nisdConfigPath     = flag.String("nisd-config", "/var/lib/niova-csi/nisd-config.yml", "Path to NISD configuration file")
+	nisdConfigPath     = flag.String("nisd-config", "/var/lib/niova-csi/nisd-config.yml", "Path to gossip node configuration file")
 	volumeTrackingPath = flag.String("volume-tracking", "/var/lib/niova-csi/volumes.yml", "Path to volume tracking file")
 	driverName         = flag.String("driver-name", "niova-block-csi", "Name of the CSI driver")
 	version            = flag.String("version", "v1.0.0", "Version of the CSI driver")
@@ -37,13 +40,16 @@ func main() {
 	klog.Infof("Node ID: %s", *nodeID)
 	klog.Infof("Endpoint: %s", *endpoint)
 	klog.Infof("NISD config path: %s", *nisdConfigPath)
+	klog.Infof("Raft ID: %s", *raftID)
 	klog.Infof("Volume tracking path: %s", *volumeTrackingPath)
 
 	// Create config manager
 	configManager := config.NewConfigManager(*nisdConfigPath, *volumeTrackingPath)
 
+	c := cpClient.InitCliCFuncs(uuid.New().String(), *raftID, *nisdConfigPath)
+
 	// Load NISD configuration
-	if err := configManager.LoadNisdConfig(); err != nil {
+	if err := configManager.LoadCpClient(c); err != nil {
 		klog.Fatalf("Failed to load NISD configuration: %v", err)
 	}
 
