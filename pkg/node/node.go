@@ -137,7 +137,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		NisdInfo: types.NisdInfo{
 			IPAddr:     nisdIPAddr,
 			Port:       nisdPort,
-			DevicePath: devicePath,
+			//DevicePath: devicePath,
 		},
 		NodeInfo:    ns.nodeID,
 		UblkPath:    ublkDevicePath,

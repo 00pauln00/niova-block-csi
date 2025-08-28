@@ -90,12 +90,12 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	// Update NISD available size
-	if err := cs.config.UpdateNisdAvailableSizeLocked(nisd.Info.UUID.String(), -volumeSize); err != nil {
+/*	if err := cs.config.UpdateNisdAvailableSizeLocked(nisd.Info.UUID.String(), -volumeSize); err != nil {
 		klog.Errorf("Failed to update NISD available size: %v", err)
 		cs.config.Mutex.Unlock()
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to update NISD size: %v", err))
 	}
-	cs.config.Mutex.Unlock()
+	cs.config.Mutex.Unlock()*/
 
 	klog.Infof("Created volume %s of size %d bytes on NISD %s", volumeID.String(), volumeSize, nisd.Info.UUID.String())
 
@@ -107,7 +107,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 				"nisdUUID":   nisd.Info.UUID.String(),
 				"nisdIPAddr": nisd.Info.IPAddr,
 				"nisdPort":   fmt.Sprintf("%d", nisd.Info.Port),
-				"devicePath": nisd.Info.DevicePath,
+//				"devicePath": nisd.Info.DevicePath,
 			},
 		},
 	}, nil
@@ -179,7 +179,7 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 			"nisdUUID":   volume.NisdInfo.UUID.String(),
 			"nisdIPAddr": volume.NisdInfo.IPAddr,
 			"nisdPort":   fmt.Sprintf("%d", volume.NisdInfo.Port),
-			"devicePath": volume.NisdInfo.DevicePath,
+			//"devicePath": volume.NisdInfo.DevicePath,
 			"volumeSize": fmt.Sprintf("%d", volume.Size),
 		},
 	}, nil
@@ -259,7 +259,7 @@ func (cs *ControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 						"nisdUUID":   volume.NisdInfo.UUID.String(),
 						"nisdIPAddr": volume.NisdInfo.IPAddr,
 						"nisdPort":   fmt.Sprintf("%d", volume.NisdInfo.Port),
-						"devicePath": volume.NisdInfo.DevicePath,
+						//"devicePath": volume.NisdInfo.DevicePath,
 						"status":     string(volume.Status),
 						"nodeName":   volume.NodeName,
 					},
@@ -277,10 +277,10 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	klog.Infof("GetCapacity: called with args %+v", req)
 
 	var totalCapacity int64
-	controller := cs.config.GetController()
-	for _, nisd := range controller.NisdMap {
+//	controller := cs.config.GetController()
+/*	for _, nisd := range controller.NisdMap {
 		totalCapacity += nisd.Info.AvailableSize
-	}
+	}*/
 
 	return &csi.GetCapacityResponse{
 		AvailableCapacity: totalCapacity,

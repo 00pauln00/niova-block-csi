@@ -37,7 +37,7 @@ build: controller node
 controller:
 	@echo "Building controller binary..."
 	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build \
+	CGO_ENABLED=1 GOOS=$(GOOS) GOARCH=$(GOARCH) go build \
 		-o $(BIN_DIR)/$(CONTROLLER_BINARY) \
 		./cmd/controller
 
@@ -45,7 +45,7 @@ controller:
 node:
 	@echo "Building node binary..."
 	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build \
+	CGO_ENABLED=1 GOOS=$(GOOS) GOARCH=$(GOARCH) go build \
 		-o $(BIN_DIR)/$(NODE_BINARY) \
 		./cmd/node
 

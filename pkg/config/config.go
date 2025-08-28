@@ -9,8 +9,8 @@ import (
 	"time"
 
 	cpClient "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/client"
-	ctlplfl "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/lib"
-	"github.com/niova-block-csi/pkg/tyipes"
+	//ctlplfl "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/lib"
+	"github.com/niova-block-csi/pkg/types"
 	"gopkg.in/yaml.v2"
 	"k8s.io/klog/v2"
 )
@@ -47,7 +47,7 @@ func (cm *ConfigManager) LoadCpClient(c *cpClient.CliCFuncs) error {
 			return fmt.Errorf("failed to parse NISD config: %v", err)
 		}*/
 
-	cm.controller.NisdMap = make(map[string]*types.Nisd)
+//	cm.controller.NisdMap = make(map[string]*types.Nisd)
 	/*	for _, nisdInfo := range config.Nisds {
 		// Validate device path exists
 		if _, err := os.Stat(nisdInfo.DevicePath); err != nil {
@@ -61,7 +61,7 @@ func (cm *ConfigManager) LoadCpClient(c *cpClient.CliCFuncs) error {
 		}
 		cm.controller.NisdMap[nisdInfo.UUID.String()] = nisd
 	}*/
-	cm.controller.cpclient = c
+//	cm.controller.cpclient = c
 
 	klog.Infof("Loaded cpclient to the controller")
 	return nil
@@ -76,10 +76,10 @@ func (cm *ConfigManager) GetController() *types.Controller {
 func (cm *ConfigManager) FindNisdWithSpace(volumeName string, requiredSize int64) (*types.Nisd, error) {
 	cm.Mutex.RLock()
 	defer cm.Mutex.RUnlock()
-	volReq := ctlplfl.VolumeReq{
+/*	volReq := ctlplfl.VolumeReq{
 		VolumeName: volumeName,
 		VolumeSize: requiredSize,
-	}
+	}*/
 
 	/*for _, nisd := range cm.controller.NisdMap {
 		if nisd.Info.AvailableSize >= requiredSize {
@@ -87,7 +87,7 @@ func (cm *ConfigManager) FindNisdWithSpace(volumeName string, requiredSize int64
 		}
 	}*/
 
-	nisd := cm.controller.cpclient.GetAvailableNisd(volReq)
+//	nisd := cm.controller.cpclient.GetAvailableNisd(volReq)
 	// TODO: update the nisd struct
 
 	return nil, fmt.Errorf("no NISD with sufficient space (%d bytes) found", requiredSize)
@@ -95,15 +95,15 @@ func (cm *ConfigManager) FindNisdWithSpace(volumeName string, requiredSize int64
 
 func (cm *ConfigManager) UpdateNisdAvailableSizeLocked(nisdUUID string, sizeChange int64) error {
 
-	nisd, exists := cm.controller.NisdMap[nisdUUID]
+/*	nisd, exists := cm.controller.NisdMap[nisdUUID]
 	if !exists {
 		return fmt.Errorf("NISD with UUID %s not found", nisdUUID)
-	}
+	}*/
 
-	nisd.Info.AvailableSize += sizeChange
+/*	nisd.Info.AvailableSize += sizeChange
 	if nisd.Info.AvailableSize < 0 {
 		nisd.Info.AvailableSize = 0
-	}
+	}*/
 	return nil
 }
 

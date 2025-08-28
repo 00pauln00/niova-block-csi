@@ -47,11 +47,12 @@ func main() {
 	configManager := config.NewConfigManager(*nisdConfigPath, *volumeTrackingPath)
 
 	c := cpClient.InitCliCFuncs(uuid.New().String(), *raftID, *nisdConfigPath)
+	klog.Info("connection is sucessful-%v", c)
 
 	// Load NISD configuration
-	if err := configManager.LoadCpClient(c); err != nil {
+	/*	if err := configManager.LoadCpClient(c); err != nil {
 		klog.Fatalf("Failed to load NISD configuration: %v", err)
-	}
+	}*/
 
 	// Load existing volume tracking
 	if err := configManager.LoadVolumeTracking(); err != nil {
