@@ -9,6 +9,8 @@ import (
 type VolumeStatus string
 
 const (
+	SrcNISD                           = "nisd"
+	SrcCP                             = "control-plane"
 	VolumeStatusCreated  VolumeStatus = "created"
 	VolumeStatusAttached VolumeStatus = "attached"
 	VolumeStatusDetached VolumeStatus = "detached"
@@ -16,17 +18,11 @@ const (
 )
 
 type NisdInfo struct {
-	UUID   uuid.UUID `yaml:"uuid" json:"uuid"`
-	IPAddr string    `yaml:"ipaddr" json:"ipaddr"`
-	Port   int       `yaml:"port" json:"port"`
-	// DevicePath    string    `yaml:"devicePath" json:"devicePath"`
-	// TotalSize     int64     `yaml:"totalSize" json:"totalSize"`
-	// AvailableSize int64     `yaml:"availableSize" json:"availableSize"`
-}
-
-type VolumeReq struct {
-	VolumeName string
-	VolumeSize int64
+	UUID          uuid.UUID `yaml:"uuid" json:"uuid"`
+	IPAddr        string    `yaml:"ipaddr" json:"ipaddr"`
+	Port          int       `yaml:"port" json:"port"`
+	TotalSize     int64     `yaml:"totalSize" json:"totalSize"`
+	AvailableSize int64     `yaml:"availableSize" json:"availableSize"`
 }
 
 type Nisd struct {
@@ -47,7 +43,7 @@ type Volume struct {
 
 type Controller struct {
 	NisdMap  map[string]*Nisd `yaml:"nisdMap" json:"nisdMap"`
-	cpclient *cpClient.CliCFuncs
+	Cpclient *cpClient.CliCFuncs
 }
 
 type NodeVolume struct {

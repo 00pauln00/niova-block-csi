@@ -4,6 +4,8 @@ go 1.23.0
 
 toolchain go1.24.6
 
+replace github.com/00pauln00/niova-mdsvc => ./niova-mdsvc
+
 require (
 	github.com/00pauln00/niova-mdsvc v0.0.0-20250828071051-291fb9f7747f
 	github.com/container-storage-interface/spec v1.8.0
