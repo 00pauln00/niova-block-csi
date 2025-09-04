@@ -71,17 +71,20 @@ func (cm *ConfigManager) GetController() *types.Controller {
 	return cm.controller
 }
 
-func (cm *ConfigManager) FindNisdWithSpace(requiredSize int64) (*types.Nisd, error) {
+func (cm *ConfigManager) FindNisdWithSpace(requiredSize int64) (*types.Nisd, string, error) {
 	cm.Mutex.RLock()
 	defer cm.Mutex.RUnlock()
 
 	Vdev := ctlplfl.Vdev{
 		Size: requiredSize,
 	}
+
 	err := cm.controller.Cpclient.CreateVdev(&Vdev)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get nisd %w", err)
+		klog.Infof("nisd is not allocated")
+		return nil, "", fmt.Errorf("failed to get nisd %w", err)
 	}
+	klog.Infof("cp has sent the struct vdev :%v", Vdev)
 	for _, nisdChunk := range Vdev.NisdToChkMap {
 		if nisdChunk.Nisd == nil {
 			continue
@@ -92,10 +95,10 @@ func (cm *ConfigManager) FindNisdWithSpace(requiredSize int64) (*types.Nisd, err
 			VolMap: make(map[string]*types.Volume), // initialize empty map
 		}
 
-		return nisd, nil
+		return nisd, Vdev.VdevID, nil
 	}
 
-	return nil, fmt.Errorf("no NISD found in controlplane response for size %d", requiredSize)
+	return nil, "", fmt.Errorf("no NISD found in controlplane response for size %d", requiredSize)
 
 	/*if cm.configSource == types.SrcNISD {
 		for _, nisd := range cm.controller.NisdMap {
@@ -130,7 +133,7 @@ func (cm *ConfigManager) AddVolumeLocked(volume *types.Volume) error {
 	if !exists {
 		return fmt.Errorf("NISD with UUID %s not found", volume.NisdInfo.NisdID)
 	}
-	nisd.VolMap[volume.VolID.String()] = volume
+	nisd.VolMap[volume.VolID] = volume
 	return cm.saveVolumeTracking()
 }
 
@@ -226,7 +229,7 @@ func (cm *ConfigManager) LoadVolumeTracking() error {
 
 	for _, volume := range trackingFile.Volumes {
 		if nisd, exists := cm.controller.NisdMap[volume.NisdInfo.NisdID]; exists {
-			nisd.VolMap[volume.VolID.String()] = volume
+			nisd.VolMap[volume.VolID] = volume
 		}
 	}
 

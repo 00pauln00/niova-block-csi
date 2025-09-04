@@ -32,7 +32,7 @@ type Nisd struct {
 }
 
 type Volume struct {
-	VolID      uuid.UUID    `yaml:"volumeID" json:"volumeID"`
+	VolID      string       `yaml:"volumeID" json:"volumeID"`
 	NisdInfo   *cplib.Nisd  `yaml:"nisdInfo" json:"nisdInfo"`
 	Size       int64        `yaml:"volumeSize" json:"volumeSize"`
 	Path       string       `yaml:"volumePath" json:"volumePath"`

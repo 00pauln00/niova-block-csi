@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/google/uuid"
+	//"github.com/google/uuid"
 	"github.com/niova-block-csi/pkg/config"
 	"github.com/niova-block-csi/pkg/types"
 	"google.golang.org/grpc/codes"
@@ -65,13 +65,14 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	// Find NISD with available space
-	nisd, err := cs.config.FindNisdWithSpace(volumeSize)
+	nisd, vdevid, err := cs.config.FindNisdWithSpace(volumeSize)
 	if err != nil {
 		klog.Errorf("Failed to find NISD with sufficient space: %v", err)
 		return nil, status.Error(codes.ResourceExhausted, err.Error())
 	}
+	klog.Infof("vdevid is : %s", vdevid)
 	// Generate volume ID
-	volumeID := uuid.New()
+	volumeID := vdevid
 
 	// Create volume structure
 	volume := &types.Volume{
@@ -97,11 +98,11 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 	cs.config.Mutex.Unlock()
 
-	klog.Infof("Created volume %s of size %d bytes on NISD %s", volumeID.String(), volumeSize, nisd.Info.NisdID)
+	klog.Infof("Created volume %s of size %d bytes on NISD %s", volumeID, volumeSize, nisd.Info.NisdID)
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			VolumeId:      volumeID.String(),
+			VolumeId:      volumeID,
 			CapacityBytes: volumeSize,
 			VolumeContext: map[string]string{
 				"nisdUUID":   nisd.Info.NisdID,
@@ -251,7 +252,7 @@ func (cs *ControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 		for _, volume := range nisd.VolMap {
 			entries = append(entries, &csi.ListVolumesResponse_Entry{
 				Volume: &csi.Volume{
-					VolumeId:      volume.VolID.String(),
+					VolumeId:      volume.VolID,
 					CapacityBytes: volume.Size,
 					VolumeContext: map[string]string{
 						"nisdUUID":   volume.NisdInfo.NisdID,
