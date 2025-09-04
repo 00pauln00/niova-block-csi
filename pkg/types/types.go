@@ -2,6 +2,7 @@ package types
 
 import (
 	cpClient "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/client"
+	cplib "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/lib"
 	"github.com/google/uuid"
 	"time"
 )
@@ -26,13 +27,13 @@ type NisdInfo struct {
 }
 
 type Nisd struct {
-	Info   NisdInfo           `yaml:"info" json:"info"`
+	Info   *cplib.Nisd        `yaml:"info" json:"info"`
 	VolMap map[string]*Volume `yaml:"volMap" json:"volMap"`
 }
 
 type Volume struct {
 	VolID      uuid.UUID    `yaml:"volumeID" json:"volumeID"`
-	NisdInfo   NisdInfo     `yaml:"nisdInfo" json:"nisdInfo"`
+	NisdInfo   *cplib.Nisd  `yaml:"nisdInfo" json:"nisdInfo"`
 	Size       int64        `yaml:"volumeSize" json:"volumeSize"`
 	Path       string       `yaml:"volumePath" json:"volumePath"`
 	NodeName   string       `yaml:"nodeName" json:"nodeName"`
@@ -48,7 +49,7 @@ type Controller struct {
 
 type NodeVolume struct {
 	VolID       uuid.UUID    `yaml:"volumeID" json:"volumeID"`
-	NisdInfo    NisdInfo     `yaml:"nisdInfo" json:"nisdInfo"`
+	NisdInfo    *cplib.Nisd  `yaml:"nisdInfo" json:"nisdInfo"`
 	NodeInfo    string       `yaml:"nodeInfo" json:"nodeInfo"`
 	UblkPath    string       `yaml:"ublkPath" json:"ublkPath"`
 	UblkPid     int          `yaml:"ublkPid" json:"ublkPid"`
@@ -66,5 +67,5 @@ type VolumeTrackingFile struct {
 }
 
 type NisdConfig struct {
-	Nisds []*NisdInfo `yaml:"nisds" json:"nisds"`
+	Nisds []*cplib.Nisd `yaml:"nisds" json:"nisds"`
 }

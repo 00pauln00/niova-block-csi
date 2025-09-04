@@ -10,21 +10,19 @@ import (
 
 	cpClient "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/client"
 	ctlplfl "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/lib"
-	"github.com/google/uuid"
 	"github.com/niova-block-csi/pkg/types"
 	"gopkg.in/yaml.v2"
 	"k8s.io/klog/v2"
 )
 
 type ConfigManager struct {
-	configSource       string
 	nisdConfigPath     string
 	volumeTrackingPath string
 	controller         *types.Controller
 	Mutex              sync.RWMutex
 }
 
-func NewConfigManager(nisdConfigPath, volumeTrackingPath, configSource string) *ConfigManager {
+func NewConfigManager(nisdConfigPath, volumeTrackingPath string) *ConfigManager {
 	return &ConfigManager{
 		nisdConfigPath:     nisdConfigPath,
 		volumeTrackingPath: volumeTrackingPath,
@@ -44,25 +42,25 @@ func (cm *ConfigManager) LoadConfig() error {
 
 	cm.Mutex.Lock()
 	defer cm.Mutex.Unlock()
-	cm.controller.NisdMap = make(map[string]*types.Nisd)
+	/*	cm.controller.NisdMap = make(map[string]*types.Nisd)
 
-	data, err := ioutil.ReadFile(cm.nisdConfigPath)
-	if err != nil {
-		return fmt.Errorf("failed to read NISD config file: %v", err)
-	}
-
-	var config types.NisdConfig
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return fmt.Errorf("failed to parse NISD config: %v", err)
-	}
-
-	for _, nisdInfo := range config.Nisds {
-		nisd := &types.Nisd{
-			Info:   *nisdInfo,
-			VolMap: make(map[string]*types.Volume),
+		data, err := ioutil.ReadFile(cm.nisdConfigPath)
+		if err != nil {
+			return fmt.Errorf("failed to read NISD config file: %v", err)
 		}
-		cm.controller.NisdMap[nisdInfo.UUID.String()] = nisd
-	}
+
+		var config types.NisdConfig
+		if err := yaml.Unmarshal(data, &config); err != nil {
+			return fmt.Errorf("failed to parse NISD config: %v", err)
+		}
+
+		for _, nisdInfo := range config.Nisds {
+			nisd := &types.Nisd{
+				Info:   *nisdInfo,
+				VolMap: make(map[string]*types.Volume),
+			}
+			cm.controller.NisdMap[nisdInfo.UUID.String()] = nisd
+		}*/
 
 	return nil
 }
@@ -77,43 +75,29 @@ func (cm *ConfigManager) FindNisdWithSpace(requiredSize int64) (*types.Nisd, err
 	cm.Mutex.RLock()
 	defer cm.Mutex.RUnlock()
 
-	if cm.configSource == types.SrcCP {
-		volReq := ctlplfl.Vdev{
-			Size: requiredSize,
-		}
-		nisd, err := cm.controller.Cpclient.GetAvailableNisd(&volReq)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get nisd %w", err)
-		}
-		for _, nisdChunk := range nisd.NisdToChkMap {
-			if nisdChunk.Nisd == nil {
-				continue
-			}
-
-			n := nisdChunk.Nisd
-
-			uid, err := uuid.Parse(n.NisdID)
-			if err != nil {
-				return nil, fmt.Errorf("invalid UUID in NisdID %q: %w", n.NisdID, err)
-			}
-
-			// Translate ctlplfl.Nisd → types.Nisd
-			nisd := &types.Nisd{
-				Info: types.NisdInfo{
-					UUID:   uid,
-					IPAddr: n.IPAddr,
-					Port:   int(n.PeerPort),
-				},
-				VolMap: make(map[string]*types.Volume), // initialize empty map
-			}
-
-			return nisd, nil
-		}
-
-		return nil, fmt.Errorf("no NISD found in controlplane response for size %d", requiredSize)
-
+	Vdev := ctlplfl.Vdev{
+		Size: requiredSize,
 	}
-	if cm.configSource == types.SrcNISD {
+	err := cm.controller.Cpclient.CreateVdev(&Vdev)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get nisd %w", err)
+	}
+	for _, nisdChunk := range Vdev.NisdToChkMap {
+		if nisdChunk.Nisd == nil {
+			continue
+		}
+
+		nisd := &types.Nisd{
+			Info:   nisdChunk.Nisd,
+			VolMap: make(map[string]*types.Volume), // initialize empty map
+		}
+
+		return nisd, nil
+	}
+
+	return nil, fmt.Errorf("no NISD found in controlplane response for size %d", requiredSize)
+
+	/*if cm.configSource == types.SrcNISD {
 		for _, nisd := range cm.controller.NisdMap {
 			if nisd.Info.AvailableSize >= requiredSize {
 				return nisd, nil
@@ -121,12 +105,12 @@ func (cm *ConfigManager) FindNisdWithSpace(requiredSize int64) (*types.Nisd, err
 		}
 	}
 
-	return nil, fmt.Errorf("no NISD with sufficient space (%d bytes) found", requiredSize)
+	return nil, fmt.Errorf("no NISD with sufficient space (%d bytes) found", requiredSize)*/
 }
 
 func (cm *ConfigManager) UpdateNisdAvailableSizeLocked(nisdUUID string, sizeChange int64) error {
 
-	if cm.configSource == types.SrcNISD {
+	/*	if cm.configSource == types.SrcNISD {
 		nisd, exists := cm.controller.NisdMap[nisdUUID]
 		if !exists {
 			return fmt.Errorf("NISD with UUID %s not found", nisdUUID)
@@ -136,15 +120,15 @@ func (cm *ConfigManager) UpdateNisdAvailableSizeLocked(nisdUUID string, sizeChan
 		if nisd.Info.AvailableSize < 0 {
 			nisd.Info.AvailableSize = 0
 		}
-	}
+	}*/
 	return nil
 }
 
 func (cm *ConfigManager) AddVolumeLocked(volume *types.Volume) error {
 
-	nisd, exists := cm.controller.NisdMap[volume.NisdInfo.UUID.String()]
+	nisd, exists := cm.controller.NisdMap[volume.NisdInfo.NisdID]
 	if !exists {
-		return fmt.Errorf("NISD with UUID %s not found", volume.NisdInfo.UUID.String())
+		return fmt.Errorf("NISD with UUID %s not found", volume.NisdInfo.NisdID)
 	}
 	nisd.VolMap[volume.VolID.String()] = volume
 	return cm.saveVolumeTracking()
@@ -155,7 +139,7 @@ func (cm *ConfigManager) RemoveVolume(volumeID string) error {
 	for _, nisd := range cm.controller.NisdMap {
 		if vol, exists := nisd.VolMap[volumeID]; exists {
 			delete(nisd.VolMap, volumeID)
-			cm.UpdateNisdAvailableSizeLocked(vol.NisdInfo.UUID.String(), vol.Size)
+			cm.UpdateNisdAvailableSizeLocked(vol.NisdInfo.NisdID, vol.Size)
 			return cm.saveVolumeTracking()
 		}
 	}
@@ -241,7 +225,7 @@ func (cm *ConfigManager) LoadVolumeTracking() error {
 	}
 
 	for _, volume := range trackingFile.Volumes {
-		if nisd, exists := cm.controller.NisdMap[volume.NisdInfo.UUID.String()]; exists {
+		if nisd, exists := cm.controller.NisdMap[volume.NisdInfo.NisdID]; exists {
 			nisd.VolMap[volume.VolID.String()] = volume
 		}
 	}

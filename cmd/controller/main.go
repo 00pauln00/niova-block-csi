@@ -11,16 +11,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/niova-block-csi/pkg/config"
 	"github.com/niova-block-csi/pkg/driver"
-	"github.com/niova-block-csi/pkg/types"
 	"k8s.io/klog/v2"
 )
 
 var (
-	endpoint           = flag.String("endpoint", "unix:///var/lib/kubelet/plugins/niova-block-csi/csi.sock", "CSI endpoint")
-	raftID             = flag.String("r", "", "pass the raft uuid")
-	nodeID             = flag.String("node-id", "", "Node ID")
-	configSource       = flag.String("config-source", "nisd", "Config source: 'nisd' for local YAML or 'control-plane' for CP client")
-	ConfigPath         = flag.String("configpath", "/var/lib/niova-csi/nisd-config.yml", "Path to nisd/gossip configuration file")
+	endpoint = flag.String("endpoint", "unix:///var/lib/kubelet/plugins/niova-block-csi/csi.sock", "CSI endpoint")
+	raftID   = flag.String("r", "", "pass the raft uuid")
+	nodeID   = flag.String("node-id", "", "Node ID")
+	//	configSource       = flag.String("config-source", "nisd", "Config source: 'nisd' for local YAML or 'control-plane' for CP client")
+	ConfigPath         = flag.String("configpath", "./gossipNodes", "Path to gossip configuration file")
 	volumeTrackingPath = flag.String("volume-tracking", "/var/lib/niova-csi/volumes.yml", "Path to volume tracking file")
 	driverName         = flag.String("driver-name", "niova-block-csi", "Name of the CSI driver")
 	version            = flag.String("version", "v1.0.0", "Version of the CSI driver")
@@ -46,21 +45,19 @@ func main() {
 	klog.Infof("Volume tracking path: %s", *volumeTrackingPath)
 
 	// Create config manager
-	configManager := config.NewConfigManager(*ConfigPath, *volumeTrackingPath, *configSource)
+	configManager := config.NewConfigManager(*ConfigPath, *volumeTrackingPath)
 
-	if *configSource == types.SrcCP {
-		c := cpClient.InitCliCFuncs(uuid.New().String(), *raftID, *ConfigPath)
-		if err := configManager.LoadCpClient(c); err != nil {
-			klog.Fatalf("Failed to load CP configuration: %v", err)
-		}
-		klog.Info("connection is sucessfull %v", c)
+	c := cpClient.InitCliCFuncs(uuid.New().String(), *raftID, *ConfigPath)
+	if err := configManager.LoadCpClient(c); err != nil {
+		klog.Fatalf("Failed to load CP configuration: %v", err)
 	}
-	if *configSource == types.SrcNISD {
+	klog.Info("connection is sucessfull %v", c)
+	/*	if *configSource == types.SrcNISD {
 		// Load NISD configuration
 		if err := configManager.LoadConfig(); err != nil {
 			klog.Fatalf("Failed to load NISD configuration: %v", err)
 		}
-	}
+	}*/
 	// Load existing volume tracking
 	if err := configManager.LoadVolumeTracking(); err != nil {
 		klog.Fatalf("Failed to load volume tracking: %v", err)

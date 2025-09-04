@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"sync"
 
+	cplib "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/lib"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/google/uuid"
 	"github.com/niova-block-csi/pkg/types"
@@ -73,11 +74,11 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	// Extract NISD information from publish context
 	nisdIPAddr := publishContext["nisdIPAddr"]
 	nisdPortStr := publishContext["nisdPort"]
-	devicePath := publishContext["devicePath"]
+	//	devicePath := publishContext["devicePath"]
 	volumeSizeStr := publishContext["volumeSize"]
 	nisduuid := publishContext["nisdUUID"]
 
-	if nisdIPAddr == "" || nisdPortStr == "" || devicePath == "" {
+	if nisdIPAddr == "" || nisdPortStr == "" {
 		return nil, status.Error(codes.InvalidArgument, "Missing required publish context information")
 	}
 
@@ -103,7 +104,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 
 	// Create ublk device
-	ublkDevicePath, ublkpid, err := ns.ublkManager.CreateUblkDevice(volumeID, nisdIPAddr, nisdPort, devicePath, volumeSizeStr, nisduuid)
+	ublkDevicePath, ublkpid, err := ns.ublkManager.CreateUblkDevice(volumeID, nisdIPAddr, nisdPort, volumeSizeStr, nisduuid)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create ublk device: %v", err))
 	}
@@ -134,10 +135,9 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	// Create or update node volume entry
 	nodeVolume := &types.NodeVolume{
 		VolID: volUUID,
-		NisdInfo: types.NisdInfo{
-			IPAddr:     nisdIPAddr,
-			Port:       nisdPort,
-			//DevicePath: devicePath,
+		NisdInfo: &cplib.Nisd{
+			IPAddr:   nisdIPAddr,
+			PeerPort: uint16(nisdPort),
 		},
 		NodeInfo:    ns.nodeID,
 		UblkPath:    ublkDevicePath,

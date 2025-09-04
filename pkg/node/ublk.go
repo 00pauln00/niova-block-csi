@@ -32,9 +32,9 @@ func NewUblkManager() *UblkManager {
 	}
 }
 
-func (um *UblkManager) CreateUblkDevice(volumeID, nisdIPAddr string, nisdPort int, devicePath, volumesize string, nisdUUID string) (string, int, error) {
-	klog.Infof("Creating ublk device for volume %s using NISD %s:%d, device %s",
-		volumeID, nisdIPAddr, nisdPort, devicePath)
+func (um *UblkManager) CreateUblkDevice(volumeID, nisdIPAddr string, nisdPort int, volumesize string, nisdUUID string) (string, int, error) {
+	klog.Infof("Creating ublk device for volume %s using NISD %s:%d",
+		volumeID, nisdIPAddr, nisdPort)
 
 	beforeublkDevices, err := lsblkDevices()
 	if err != nil {
