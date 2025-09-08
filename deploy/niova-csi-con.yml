@@ -14,6 +14,8 @@ spec:
         app: niova-csi-cont
     spec:
       nodeName: k8s-worker1
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       serviceAccountName: niova-csi-sa
       hostPID: true
       containers:
@@ -65,6 +67,8 @@ spec:
             - name: nisd-config
               mountPath: /var/lib/niova-csi
               mountPropagation: Bidirectional
+            - name: gossip-config
+              mountPath: /etc/niova/gossipNodes
 
         - name: csi-provisioner
           image: registry.k8s.io/sig-storage/csi-provisioner:v3.5.0
@@ -123,4 +127,6 @@ spec:
         - name: nisd-config
           hostPath: 
             path: /var/lib/niova-csi
-
+        - name: gossip-config
+          hostPath:
+            path: /etc/niova/gossipNodes
