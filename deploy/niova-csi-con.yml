@@ -33,7 +33,7 @@ spec:
           imagePullPolicy: Always
           command: ["/bin/sh", "-c"]
           args:
-            - ulimit -l unlimited && exec /opt/niova/niova-block-csi-controller -driver-name=csi.niova.com -version=0.1.0 -node-id=$(NODE_ID) -endpoint=unix:///csi/custom2.sock -nisd-config=/var/lib/niova-csi/nisd-config.yml -volume-tracking=/var/lib/niova-csi/volumes.yml
+            - ulimit -l unlimited && exec /opt/niova/niova-block-csi-controller -driver-name=csi.niova.com -version=0.1.0 -node-id=$(NODE_ID) -endpoint=unix:///csi/custom2.sock -configpath=/etc/niova/gossipNodes -r 1f07da3c-87a2-4c01-9792-14ad0ac3c865
           env:
             - name: NODE_ID
               valueFrom:
