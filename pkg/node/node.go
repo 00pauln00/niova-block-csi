@@ -70,7 +70,6 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	volumeID := req.GetVolumeId()
 	stagingPath := req.GetStagingTargetPath()
 	publishContext := req.GetPublishContext()
-
 	// Extract NISD information from publish context
 	nisdIPAddr := publishContext["nisdIPAddr"]
 	nisdPortStr := publishContext["nisdPort"]
@@ -94,14 +93,6 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 
 	ns.mutex.Lock()
 	defer ns.mutex.Unlock()
-
-	// Check if volume already staged
-	if nodeVol, exists := ns.node.VolMap[volumeID]; exists {
-		if nodeVol.UblkPath != "" {
-			klog.Infof("Volume %s already staged with ublk device %s", volumeID, nodeVol.UblkPath)
-			return &csi.NodeStageVolumeResponse{}, nil
-		}
-	}
 
 	// Create ublk device
 	ublkDevicePath, ublkpid, err := ns.ublkManager.CreateUblkDevice(volumeID, nisdIPAddr, nisdPort, volumeSizeStr, nisduuid)
@@ -135,7 +126,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	// Create or update node volume entry
 	nodeVolume := &types.NodeVolume{
 		VolID: volUUID,
-		NisdInfo: &cplib.Nisd{
+		NisdInfo: cplib.Nisd{
 			IPAddr:   nisdIPAddr,
 			PeerPort: uint16(nisdPort),
 		},

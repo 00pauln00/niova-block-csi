@@ -82,8 +82,8 @@ func (cm *ConfigManager) FindNisdWithSpace(requiredSize int64) (*types.Nisd, str
 
 	for _, nisdChunk := range Vdev.NisdToChkMap {
 		klog.Infof("allocated nisd for vdev :%+v", nisdChunk)
-
-		if nisdChunk.Nisd == nil {
+		var emptyNisd ctlplfl.Nisd
+		if nisdChunk.Nisd == emptyNisd {
 			continue
 		}
 
@@ -116,13 +116,13 @@ func (cm *ConfigManager) UpdateNisdAvailableSizeLocked(nisdUUID string, sizeChan
 }
 
 func (cm *ConfigManager) AddVolumeLocked(volume *types.Volume) error {
-	nisd, exists := cm.controller.NisdMap[volume.NisdInfo.NisdID]
+	nisd, exists := cm.controller.NisdMap[volume.NisdInfo.ID]
 	if !exists {
 		nisd = &types.Nisd{
 			Info:   volume.NisdInfo,
 			VolMap: make(map[string]*types.Volume),
 		}
-		cm.controller.NisdMap[volume.NisdInfo.NisdID] = nisd
+		cm.controller.NisdMap[volume.NisdInfo.ID] = nisd
 	}
 	if nisd.VolMap == nil {
 		nisd.VolMap = make(map[string]*types.Volume)
@@ -137,7 +137,7 @@ func (cm *ConfigManager) RemoveVolume(volumeID string) error {
 	for _, nisd := range cm.controller.NisdMap {
 		if vol, exists := nisd.VolMap[volumeID]; exists {
 			delete(nisd.VolMap, volumeID)
-			cm.UpdateNisdAvailableSizeLocked(vol.NisdInfo.NisdID, vol.Size)
+			cm.UpdateNisdAvailableSizeLocked(vol.NisdInfo.ID, vol.Size)
 			return nil
 		}
 	}

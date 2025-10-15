@@ -13,14 +13,14 @@ spec:
       labels:
         app: niova-csi-cont
     spec:
-      nodeName: k8s-worker1
+      nodeName: io05
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       serviceAccountName: niova-csi-sa
       hostPID: true
       containers:
         - name: niova-csi
-          image: paro1618/niova-csi:controller
+          image: paro1618/niova-csi:controller-v1
           securityContext:
             privileged: true
             capabilities:
@@ -33,12 +33,14 @@ spec:
           imagePullPolicy: Always
           command: ["/bin/sh", "-c"]
           args:
-            - ulimit -l unlimited && exec /opt/niova/niova-block-csi-controller -driver-name=csi.niova.com -version=0.1.0 -node-id=$(NODE_ID) -endpoint=unix:///csi/custom2.sock -configpath=/etc/niova/gossipNodes -r 1f07da3c-87a2-4c01-9792-14ad0ac3c865
+            - ulimit -l unlimited && exec /opt/niova/niova-block-csi-controller -driver-name=csi.niova.com -version=0.1.0 -node-id=$(NODE_ID) -endpoint=unix:///csi/custom2.sock -configpath=/etc/niova/gossipNodes -r ${RUN_ID}
           env:
             - name: NODE_ID
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: RUN_ID
+              value: "558b741d-9359-4022-b59a-d57e9357872c"
           terminationMessagePath: /tmp/termination-log
           volumeMounts:
             - name: plugin-dir
@@ -69,6 +71,7 @@ spec:
               mountPropagation: Bidirectional
             - name: gossip-config
               mountPath: /etc/niova/gossipNodes
+              mountPropagation: Bidirectional
 
         - name: csi-provisioner
           image: registry.k8s.io/sig-storage/csi-provisioner:v3.5.0
@@ -130,3 +133,4 @@ spec:
         - name: gossip-config
           hostPath:
             path: /etc/niova/gossipNodes
+            type: File

@@ -16,7 +16,7 @@ spec:
       hostPID: true
       containers:
         - name: niova-csi
-          image: paro1618/niova-csi:node
+          image: paro1618/niova-csi:node-v1
           securityContext:
             privileged: true
             capabilities:
@@ -44,8 +44,6 @@ spec:
             - name: niova-var-dir
               mountPath: /var/niova
               mountPropagation: Bidirectional
-            - name: niova-block
-              mountPath: /niova-block
             - name: host-dev
               mountPath: /dev
               mountPropagation: HostToContainer
@@ -67,6 +65,15 @@ spec:
             - name: nisd-config
               mountPath: /etc/niova
               mountPropagation: Bidirectional
+            - name: sbin-dir
+              mountPath: /usr/sbin
+              mountPropagation: HostToContainer
+            - name: bin-dir
+              mountPath: /bin
+              mountPropagation: HostToContainer
+            - name: usr-bin
+              mountPath: /usr/bin
+              mountPropagation: HostToContainer
 
         - name: driver-registrar
           image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.8.0
@@ -92,10 +99,6 @@ spec:
           hostPath:
             path: /var/niova
             type: DirectoryOrCreate
-        - name: niova-block
-          hostPath:
-            path: /root/niova-block
-            type: DirectoryOrCreate
         - name: host-dev
           hostPath:
             path: /dev
@@ -120,4 +123,13 @@ spec:
         - name: nisd-config
           hostPath:
             path: /etc/niova
+        - name: sbin-dir
+          hostPath:
+            path: /usr/sbin
+        - name: bin-dir
+          hostPath:
+            path: /bin
+        - name: usr-bin
+          hostPath:
+            path: /usr/bin
 
