@@ -43,6 +43,12 @@ func main() {
 
 	// Create config manager
 	configManager := config.NewConfigManager(*ConfigPath)
+	k8sClient, err := config.NewNiovaController()
+	if err != nil {
+		klog.Fatalf("failed to load k8's client %v ", err)
+	}
+	
+	configManager.K8sClient = k8sClient
 
 	c := cpClient.InitCliCFuncs(uuid.New().String(), *raftID, *ConfigPath)
 	if err := configManager.LoadCpClient(c); err != nil {

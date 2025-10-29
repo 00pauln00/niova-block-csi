@@ -8,6 +8,8 @@ import (
 	cpClient "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/client"
 	ctlplfl "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/lib"
 	"github.com/niova-block-csi/pkg/types"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 )
 
@@ -15,6 +17,7 @@ type ConfigManager struct {
 	nisdConfigPath     string
 	controller         *types.Controller
 	Mutex              sync.RWMutex
+	K8sClient          *kubernetes.Clientset
 }
 
 func NewConfigManager(nisdConfigPath string) *ConfigManager {
@@ -24,6 +27,24 @@ func NewConfigManager(nisdConfigPath string) *ConfigManager {
 			NisdMap: make(map[string]*types.Nisd),
 		},
 	}
+}
+
+func NewNiovaController() (*kubernetes.Clientset, error) {
+    // Use in-cluster config — works automatically when running inside Kubernetes
+    config, err := rest.InClusterConfig()
+    if err != nil {
+        return nil, fmt.Errorf("failed to load in-cluster config: %v", err)
+    }
+
+    // Create the clientset
+    clientset, err := kubernetes.NewForConfig(config)
+    if err != nil {
+        return nil, fmt.Errorf("failed to create Kubernetes clientset: %v", err)
+    }
+
+    fmt.Println("✅ Kubernetes client successfully initialized")
+
+    return clientset, nil
 }
 
 func (cm *ConfigManager) LoadCpClient(c *cpClient.CliCFuncs) error {
@@ -65,12 +86,15 @@ func (cm *ConfigManager) GetController() *types.Controller {
 	return cm.controller
 }
 
-func (cm *ConfigManager) FindNisdWithSpace(requiredSize int64) (*types.Nisd, string, error) {
+func (cm *ConfigManager) FindNisdWithSpace(requiredSize int64, devid string) (*types.Nisd, string, error) {
 	cm.Mutex.RLock()
 	defer cm.Mutex.RUnlock()
 
 	Vdev := ctlplfl.Vdev{
 		Size: requiredSize,
+		NisdToChkMap: []ctlplfl.NisdChunk{
+			{Nisd: ctlplfl.Nisd{DevID: devid}},
+		},
 	}
 	klog.Infof("calling create vdev request with size", Vdev.Size)
 	err := cm.controller.Cpclient.CreateVdev(&Vdev)

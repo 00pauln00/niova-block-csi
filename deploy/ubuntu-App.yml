@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ubuntu-csi-deployment
+
+spec:
+
+  replicas: 1
+
+  selector:
+
+    matchLabels:
+
+      app: ubuntu-csi
+
+  template:
+
+    metadata:
+
+      labels:
+
+        app: ubuntu-csi
+
+    spec:
+
+      containers:
+
+      - name: ubuntu-container
+
+        image: ubuntu:22.04
+
+        command:
+
+          - /bin/bash
+
+          - -c
+
+          - |
+
+            apt update && \
+
+            apt install -y fio iputils-ping net-tools curl wget bash && \
+
+            sleep infinity
+
+        volumeMounts:
+
+        - name: csi-storage
+
+          mountPath: /data
+
+      volumes:
+
+      - name: csi-storage
+
+        persistentVolumeClaim:
+
+          claimName: csi-pvc
+
+---
+
+apiVersion: v1
+
+kind: PersistentVolumeClaim
+
+metadata:
+
+  name: csi-pvc
+
+  annotations:
+
+    niova.com/device-id: nvme-KIOXIA_KCD8DPUG7T68_7FB0A02Y0VC3-part1
+
+spec:
+
+  accessModes:
+
+    - ReadWriteOnce
+
+  storageClassName: niova-csi-sc  # Your CSI StorageClass
+
+  resources:
+
+    requests:
+
+      storage: 250Gi
+
+---
+
+apiVersion: storage.k8s.io/v1
+
+kind: StorageClass
+
+metadata:
+
+  name: niova-csi-sc
+
+provisioner: csi.niova.com
+
+volumeBindingMode: WaitForFirstConsumer
+
+reclaimPolicy: Delete
+parameters:
+  pvcName: "csi-pvc"
