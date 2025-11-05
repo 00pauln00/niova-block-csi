@@ -168,14 +168,19 @@ func (cm *ConfigManager) RemoveVolume(volumeID string) error {
 	return fmt.Errorf("volume %s not found", volumeID)
 }
 
-func (cm *ConfigManager) GetVolume(volumeID string) (*types.Volume, error) {
+func (cm *ConfigManager) GetVolume(volumeID string) (*ctlplfl.Vdev, error) {
+	getReq := ctlplfl.GetReq{ID: volumeID}
+	vdevs, err := cm.controller.Cpclient.GetVdevs(&getReq)
+	if err != nil {
+        	return nil, err
+    	}	
 
-	for _, nisd := range cm.controller.NisdMap {
-		if vol, exists := nisd.VolMap[volumeID]; exists {
-			return vol, nil
-		}
-	}
-	return nil, fmt.Errorf("volume %s not found", volumeID)
+    	if len(vdevs) == 0 {
+        	return nil, fmt.Errorf("volume %s not found", volumeID)
+    	}
+
+    	firstVdev := &vdevs[0] // access the first item safely
+    	return firstVdev, nil
 }
 
 func (cm *ConfigManager) UpdateVolumeStatus(volumeID string, status types.VolumeStatus, nodeName string) error {

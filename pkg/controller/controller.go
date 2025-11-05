@@ -182,20 +182,14 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume %s not found", volumeID))
 	}
 
-	// Update volume status to attached
-	if err := cs.config.UpdateVolumeStatus(volumeID, types.VolumeStatusAttached, nodeID); err != nil {
-		klog.Errorf("Failed to update volume status: %v", err)
-		cs.config.Mutex.Unlock()
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to attach volume: %v", err))
-	}
 	cs.config.Mutex.Unlock()
 	klog.Infof("Published volume %s to node %s", volumeID, nodeID)
 
 	return &csi.ControllerPublishVolumeResponse{
 		PublishContext: map[string]string{
-			"nisdUUID":   volume.NisdInfo.ID,
-			"nisdIPAddr": volume.NisdInfo.IPAddr,
-			"nisdPort":   fmt.Sprintf("%d", volume.NisdInfo.PeerPort),
+			"nisdUUID":   volume.NisdToChkMap[0].Nisd.ID,
+			"nisdIPAddr": volume.NisdToChkMap[0].Nisd.IPAddr,
+			"nisdPort":   fmt.Sprintf("%d", volume.NisdToChkMap[0].Nisd.PeerPort),
 			"volumeSize": fmt.Sprintf("%d", volume.Size),
 		},
 	}, nil
@@ -218,12 +212,6 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 		return &csi.ControllerUnpublishVolumeResponse{}, nil
 	}
 
-	// Update volume status to detached
-	if err := cs.config.UpdateVolumeStatus(volumeID, types.VolumeStatusDetached, ""); err != nil {
-		klog.Errorf("Failed to update volume status: %v", err)
-		cs.config.Mutex.Unlock()
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to detach volume: %v", err))
-	}
 	cs.config.Mutex.Unlock()
 
 	klog.Infof("Unpublished volume %s", volumeID)
