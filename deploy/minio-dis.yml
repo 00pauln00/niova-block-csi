@@ -1,0 +1,89 @@
+# 1. SECRET for MinIO Credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-credentials
+type: Opaque
+data:
+  MINIO_ROOT_USER: bWluaW9hZG1pbg== # base64 encoded: minioadmin
+  MINIO_ROOT_PASSWORD: bWluaW9hZG1pbg== # base64 encoded: minioadmin
+---
+# 2. HEADLESS SERVICE for Stable Networking
+# This service creates stable DNS entries (e.g., minio-cluster-0.minio-cluster)
+# which is MANDATORY for MinIO distributed mode.
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-cluster # Changed to 'minio-cluster'
+  labels:
+    app: minio-cluster
+spec:
+  clusterIP: None
+  ports:
+  - port: 9000
+    targetPort: 9000
+    protocol: TCP
+  selector:
+    app: minio-cluster
+---
+# 3. STATEFULSET for Distributed MinIO (6 Replicas)
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio-cluster # Changed to 'minio-cluster'
+spec:
+  serviceName: minio-cluster # Crucial: Must match the Headless Service name
+  replicas: 6 # <-- UPDATED to 6 replicas
+  selector:
+    matchLabels:
+      app: minio-cluster
+  template:
+    metadata:
+      labels:
+        app: minio-cluster
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: io06
+      containers:
+      - name: minio
+        image: minio/minio:latest
+        # --- IMPORTANT Distributed Mode Command for 6 Nodes ---
+        # The MinIO server command MUST list all 6 expected nodes in the cluster,
+        # using the correct Headless Service name.
+        args:
+          - server
+          - http://minio-cluster-0.minio-cluster:9000/data-test
+          - http://minio-cluster-1.minio-cluster:9000/data-test
+          - http://minio-cluster-2.minio-cluster:9000/data-test
+          - http://minio-cluster-3.minio-cluster:9000/data-test
+          - http://minio-cluster-4.minio-cluster:9000/data-test
+          - http://minio-cluster-5.minio-cluster:9000/data-test
+        envFrom:
+          - secretRef:
+              name: minio-credentials
+        ports:
+          - containerPort: 9000
+        volumeMounts:
+          - name: minio-storage
+            mountPath: /data-test
+
+  # --- VOLUME CLAIM TEMPLATE ---
+  # Creates 6 unique PVCs (10Gi each)
+  volumeClaimTemplates:
+  - metadata:
+      name: minio-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: niova-csi-sc
+      resources:
+        requests:
+          storage: 1Ti
+---
+# 4. STORAGE CLASS (Unchanged)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: niova-csi-sc
+provisioner: csi.niova.com
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete

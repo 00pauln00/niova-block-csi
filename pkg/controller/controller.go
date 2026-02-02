@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type ControllerServer struct {
@@ -51,6 +52,28 @@ func NewControllerServer(configManager *config.ConfigManager) *ControllerServer 
 func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	klog.Infof("CreateVolume: called with args %+v", req)
 
+    	pvcName := req.GetParameters()["pvcName"]
+	pvcNamespace := "default"
+	var deviceID string
+    	klog.Infof("Resolved PVC Name: %s, Namespace: %s", pvcName, pvcNamespace)
+	if pvcName != "" {	
+		targetPVC, err := cs.config.K8sClient.CoreV1().PersistentVolumeClaims(pvcNamespace).Get(ctx, pvcName, metav1.GetOptions{})
+        	if err != nil {
+	            klog.Infof("Error in getting PVC %s: %v", pvcName, err)
+        	    return nil, fmt.Errorf("failed to get PVC %s: %v", pvcName, err)
+	        }
+        
+        	klog.Infof("getting the annotations from k8's")
+	        deviceID = targetPVC.Annotations["niova.com/device-id"]
+        	if deviceID == "" {
+	            klog.Infof("PVC %s is missing the 'niova.com/device-id' annotation", pvcName)
+        	    return nil, fmt.Errorf("PVC missing device-id annotation")
+	        }
+	} else {
+		 klog.Infof("No PVC name provided in parameters — proceeding with deviceID=nil")
+	}
+
+        klog.Infof("Creating volume %s on device %s", pvcName, deviceID)
 	if req.GetName() == "" {
 		return nil, status.Error(codes.InvalidArgument, "Volume name cannot be empty")
 	}
@@ -65,7 +88,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	// Find NISD with available space
-	nisd, vdevid, err := cs.config.FindNisdWithSpace(volumeSize)
+	nisd, vdevid, err := cs.config.FindNisdWithSpace(volumeSize, deviceID)
 	if err != nil {
 		klog.Errorf("Failed to find NISD with sufficient space: %v", err)
 		return nil, status.Error(codes.ResourceExhausted, err.Error())
@@ -159,20 +182,14 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume %s not found", volumeID))
 	}
 
-	// Update volume status to attached
-	if err := cs.config.UpdateVolumeStatus(volumeID, types.VolumeStatusAttached, nodeID); err != nil {
-		klog.Errorf("Failed to update volume status: %v", err)
-		cs.config.Mutex.Unlock()
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to attach volume: %v", err))
-	}
 	cs.config.Mutex.Unlock()
 	klog.Infof("Published volume %s to node %s", volumeID, nodeID)
 
 	return &csi.ControllerPublishVolumeResponse{
 		PublishContext: map[string]string{
-			"nisdUUID":   volume.NisdInfo.ID,
-			"nisdIPAddr": volume.NisdInfo.IPAddr,
-			"nisdPort":   fmt.Sprintf("%d", volume.NisdInfo.PeerPort),
+			"nisdUUID":   volume.NisdToChkMap[0].Nisd.ID,
+			"nisdIPAddr": volume.NisdToChkMap[0].Nisd.IPAddr,
+			"nisdPort":   fmt.Sprintf("%d", volume.NisdToChkMap[0].Nisd.PeerPort),
 			"volumeSize": fmt.Sprintf("%d", volume.Size),
 		},
 	}, nil
@@ -195,12 +212,6 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 		return &csi.ControllerUnpublishVolumeResponse{}, nil
 	}
 
-	// Update volume status to detached
-	if err := cs.config.UpdateVolumeStatus(volumeID, types.VolumeStatusDetached, ""); err != nil {
-		klog.Errorf("Failed to update volume status: %v", err)
-		cs.config.Mutex.Unlock()
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to detach volume: %v", err))
-	}
 	cs.config.Mutex.Unlock()
 
 	klog.Infof("Unpublished volume %s", volumeID)
