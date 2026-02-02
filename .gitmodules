@@ -1,6 +1,3 @@
 [submodule "niova-mdsvc"]
 	path = niova-mdsvc
 	url = https://github.com/00pauln00/niova-mdsvc.git
-[submodule "niova-pumicedb"]
-	path = niova-pumicedb
-	url = https://github.com/00pauln00/niova-pumicedb.git
