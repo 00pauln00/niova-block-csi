@@ -1,3 +1,4 @@
+
 package config
 
 import (
@@ -12,23 +13,23 @@ import (
 )
 
 type ConfigManager struct {
-	nisdConfigPath     string
-	controller         *types.Controller
+	NisdConfigPath     string
+	Controller         *types.Controller
 	Mutex              sync.RWMutex
 }
 
 func NewConfigManager(nisdConfigPath string) *ConfigManager {
 	return &ConfigManager{
-		nisdConfigPath:     nisdConfigPath,
-		controller: &types.Controller{
+		NisdConfigPath:     nisdConfigPath,
+		Controller: &types.Controller{
 			NisdMap: make(map[string]*types.Nisd),
 		},
 	}
 }
 
 func (cm *ConfigManager) LoadCpClient(c *cpClient.CliCFuncs) error {
-	cm.controller.NisdMap = make(map[string]*types.Nisd)
-	cm.controller.Cpclient = c
+	cm.Controller.NisdMap = make(map[string]*types.Nisd)
+	cm.Controller.Cpclient = c
 	return nil
 }
 
@@ -62,41 +63,28 @@ func (cm *ConfigManager) LoadConfig() error {
 func (cm *ConfigManager) GetController() *types.Controller {
 	cm.Mutex.Lock()
 	defer cm.Mutex.Unlock()
-	return cm.controller
+	return cm.Controller
 }
 
-func (cm *ConfigManager) FindNisdWithSpace(requiredSize int64) (*types.Nisd, string, error) {
+func (cm *ConfigManager) FindNisdWithSpace(requiredSize int64) (string, error) {
 	cm.Mutex.RLock()
 	defer cm.Mutex.RUnlock()
 
 	Vdev := ctlplfl.Vdev{
-		Size: requiredSize,
+		Cfg: ctlplfl.VdevCfg {
+			Size: requiredSize,
+			NumReplica: 1,
+		},
 	}
-	klog.Infof("calling create vdev request with size", Vdev.Size)
-	err := cm.controller.Cpclient.CreateVdev(&Vdev)
+	klog.Infof("calling create vdev request with size", Vdev.Cfg.Size)
+	resp, err := cm.Controller.Cpclient.CreateVdev(&Vdev)
 	if err != nil {
 		klog.Infof("nisd is not allocated", err)
-		return nil, "", fmt.Errorf("failed to get nisd %w", err)
+		return "", fmt.Errorf("failed to get nisd %w", err)
 	}
-	klog.Infof("reponse from control plane :%+v", Vdev)
+	klog.Infof("reponse from control plane :%+v", resp.ID)
 
-	for _, nisdChunk := range Vdev.NisdToChkMap {
-		klog.Infof("allocated nisd for vdev :%+v", nisdChunk)
-		var emptyNisd ctlplfl.Nisd
-		if nisdChunk.Nisd == emptyNisd {
-			continue
-		}
-
-		nisd := &types.Nisd{
-			Info:   nisdChunk.Nisd,
-			VolMap: make(map[string]*types.Volume), // initialize empty map
-		}
-
-		return nisd, Vdev.VdevID, nil
-	}
-
-	return nil, "", fmt.Errorf("no NISD found in controlplane response for size %d", requiredSize)
-
+	return resp.ID, nil
 }
 
 func (cm *ConfigManager) UpdateNisdAvailableSizeLocked(nisdUUID string, sizeChange int64) error {
@@ -116,28 +104,21 @@ func (cm *ConfigManager) UpdateNisdAvailableSizeLocked(nisdUUID string, sizeChan
 }
 
 func (cm *ConfigManager) AddVolumeLocked(volume *types.Volume) error {
-	nisd, exists := cm.controller.NisdMap[volume.NisdInfo.ID]
+	vdev, exists := cm.Controller.NisdMap[volume.VolID]
 	if !exists {
-		nisd = &types.Nisd{
-			Info:   volume.NisdInfo,
-			VolMap: make(map[string]*types.Volume),
-		}
-		cm.controller.NisdMap[volume.NisdInfo.ID] = nisd
+		return fmt.Errorf("vdev %s not initialized", volume.VolID)
 	}
-	if nisd.VolMap == nil {
-		nisd.VolMap = make(map[string]*types.Volume)
-	}
-	nisd.VolMap[volume.VolID] = volume
+	vdev.VolMap[volume.VolID] = volume
 	return nil
 }
 
 
 func (cm *ConfigManager) RemoveVolume(volumeID string) error {
 
-	for _, nisd := range cm.controller.NisdMap {
+	for _, nisd := range cm.Controller.NisdMap {
 		if vol, exists := nisd.VolMap[volumeID]; exists {
 			delete(nisd.VolMap, volumeID)
-			cm.UpdateNisdAvailableSizeLocked(vol.NisdInfo.ID, vol.Size)
+			cm.UpdateNisdAvailableSizeLocked(volumeID, vol.Size)
 			return nil
 		}
 	}
@@ -145,18 +126,20 @@ func (cm *ConfigManager) RemoveVolume(volumeID string) error {
 }
 
 func (cm *ConfigManager) GetVolume(volumeID string) (*types.Volume, error) {
-
-	for _, nisd := range cm.controller.NisdMap {
-		if vol, exists := nisd.VolMap[volumeID]; exists {
-			return vol, nil
-		}
+	nisd, exists := cm.Controller.NisdMap[volumeID]
+	if !exists {
+		return nil, fmt.Errorf("volume %s not found", volumeID)
 	}
-	return nil, fmt.Errorf("volume %s not found", volumeID)
+	vol, exists := nisd.VolMap[volumeID]
+	if !exists {
+		return nil, fmt.Errorf("volume %s not found", volumeID)
+	}
+	return vol, nil
 }
 
 func (cm *ConfigManager) UpdateVolumeStatus(volumeID string, status types.VolumeStatus, nodeName string) error {
 
-	for _, nisd := range cm.controller.NisdMap {
+	for _, nisd := range cm.Controller.NisdMap {
 		if vol, exists := nisd.VolMap[volumeID]; exists {
 			vol.Status = status
 			vol.NodeName = nodeName

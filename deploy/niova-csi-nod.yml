@@ -16,7 +16,7 @@ spec:
       hostPID: true
       containers:
         - name: niova-csi
-          image: paro1618/niova-csi:node-v1
+          image: paro1618/niova-csi:node-v4
           securityContext:
             privileged: true
             capabilities:
@@ -35,6 +35,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: NIOVA_GOSSIP_PATH
+              value: "/etc/niova/gossipNodes"
+            - name: NIOVA_GOSSIP_KEY
+              value: "5c587ba3-0f41-4476-b444-ffc6bba95ff0"
           terminationMessagePath: /tmp/termination-log
           volumeMounts:
             - name: plugin-dir
@@ -52,8 +56,8 @@ spec:
             - name: host-mount
               mountPath: /run
               mountPropagation: Bidirectional
-            - name: lib-modules
-              mountPath: /lib/modules
+            - name: lib
+              mountPath: /lib
             - name: kubelet-dir
               mountPath: /var/lib/kubelet/plugins
               mountPropagation: Bidirectional
@@ -108,9 +112,9 @@ spec:
         - name: host-mount
           hostPath:
             path: /run
-        - name: lib-modules
+        - name: lib
           hostPath:
-            path: /lib/modules
+            path: /lib
         - name: kubelet-dir
           hostPath:
             path: /var/lib/kubelet/plugins

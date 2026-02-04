@@ -65,7 +65,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	// Find NISD with available space
-	nisd, vdevid, err := cs.config.FindNisdWithSpace(volumeSize)
+	vdevid, err := cs.config.FindNisdWithSpace(volumeSize)
 	if err != nil {
 		klog.Errorf("Failed to find NISD with sufficient space: %v", err)
 		return nil, status.Error(codes.ResourceExhausted, err.Error())
@@ -77,12 +77,16 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	// Create volume structure
 	volume := &types.Volume{
 		VolID:     volumeID,
-		NisdInfo:  nisd.Info,
 		Size:      volumeSize,
 		Status:    types.VolumeStatusCreated,
 		CreatedAt: time.Now(),
 	}
 	cs.config.Mutex.Lock()
+	if _, exists := cs.config.Controller.NisdMap[volumeID]; !exists {
+		cs.config.Controller.NisdMap[volumeID] = &types.Nisd{
+			VolMap: make(map[string]*types.Volume),
+    		}
+	}
 	// Add volume to config manager
 	if err := cs.config.AddVolumeLocked(volume); err != nil {
 		klog.Errorf("Failed to add volume to config: %v", err)
@@ -92,17 +96,12 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	cs.config.Mutex.Unlock()
 
-	klog.Infof("Created volume %s of size %d bytes on NISD %s", volumeID, volumeSize, nisd.Info.ID)
+	klog.Infof("Created volume %s of size %d bytes on NISD %s", volumeID, volumeSize)
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			VolumeId:      volumeID,
 			CapacityBytes: volumeSize,
-			VolumeContext: map[string]string{
-				"nisdUUID":   nisd.Info.ID,
-				"nisdIPAddr": nisd.Info.IPAddr,
-				"nisdPort":   fmt.Sprintf("%d", nisd.Info.PeerPort),
-			},
 		},
 	}, nil
 }
@@ -170,9 +169,7 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 
 	return &csi.ControllerPublishVolumeResponse{
 		PublishContext: map[string]string{
-			"nisdUUID":   volume.NisdInfo.ID,
-			"nisdIPAddr": volume.NisdInfo.IPAddr,
-			"nisdPort":   fmt.Sprintf("%d", volume.NisdInfo.PeerPort),
+			"volumeID": volume.VolID,
 			"volumeSize": fmt.Sprintf("%d", volume.Size),
 		},
 	}, nil
@@ -249,9 +246,6 @@ func (cs *ControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 					VolumeId:      volume.VolID,
 					CapacityBytes: volume.Size,
 					VolumeContext: map[string]string{
-						"nisdUUID":   volume.NisdInfo.ID,
-						"nisdIPAddr": volume.NisdInfo.IPAddr,
-						"nisdPort":   fmt.Sprintf("%d", volume.NisdInfo.PeerPort),
 						"status":     string(volume.Status),
 						"nodeName":   volume.NodeName,
 					},

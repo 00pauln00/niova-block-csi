@@ -27,13 +27,11 @@ type NisdInfo struct {
 }
 
 type Nisd struct {
-	Info   cplib.Nisd        `yaml:"info" json:"info"`
 	VolMap map[string]*Volume `yaml:"volMap" json:"volMap"`
 }
 
 type Volume struct {
 	VolID      string       `yaml:"volumeID" json:"volumeID"`
-	NisdInfo   cplib.Nisd  `yaml:"nisdInfo" json:"nisdInfo"`
 	Size       int64        `yaml:"volumeSize" json:"volumeSize"`
 	Path       string       `yaml:"volumePath" json:"volumePath"`
 	NodeName   string       `yaml:"nodeName" json:"nodeName"`
@@ -49,7 +47,6 @@ type Controller struct {
 
 type NodeVolume struct {
 	VolID       uuid.UUID    `yaml:"volumeID" json:"volumeID"`
-	NisdInfo    cplib.Nisd  `yaml:"nisdInfo" json:"nisdInfo"`
 	NodeInfo    string       `yaml:"nodeInfo" json:"nodeInfo"`
 	UblkPath    string       `yaml:"ublkPath" json:"ublkPath"`
 	UblkPid     int          `yaml:"ublkPid" json:"ublkPid"`

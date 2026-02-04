@@ -6,7 +6,7 @@ toolchain go1.24.6
 
 replace github.com/00pauln00/niova-mdsvc => ./niova-mdsvc
 
-replace github.com/00pauln00/niova-pumicedb/go => ./niova-pumicedb/go
+replace github.com/00pauln00/niova-pumicedb/go => ./niova-mdsvc/modules/niova-pumicedb/go
 
 require (
 	github.com/00pauln00/niova-mdsvc v0.0.0-20250828071051-291fb9f7747f
@@ -18,7 +18,8 @@ require (
 )
 
 require (
-	github.com/00pauln00/niova-pumicedb/go v0.0.0-20250825081145-6cf0dcb3bbb9  // indirect
+	github.com/00pauln00/niova-lookout v0.0.0-20251206193347-d24de0d14683 // indirect
+	github.com/00pauln00/niova-pumicedb/go v0.0.0-20250825081145-6cf0dcb3bbb9 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/go-logr/logr v1.2.4 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
