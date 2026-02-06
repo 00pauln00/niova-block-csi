@@ -48,7 +48,7 @@ func main() {
 	if err := configManager.LoadCpClient(c); err != nil {
 		klog.Fatalf("Failed to load CP configuration: %v", err)
 	}
-	klog.Info("connection is sucessfull %v", c)
+	klog.Info("connection with control plane is sucessful %v", c)
 
 	// Create CSI driver
 	csiDriver := driver.NewCSIDriver(*driverName, *version, *nodeID, *endpoint, configManager)

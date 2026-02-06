@@ -65,7 +65,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	// Find NISD with available space
-	vdevid, err := cs.config.FindNisdWithSpace(volumeSize)
+	vdevid, err := cs.config.AllocVdev(volumeSize)
 	if err != nil {
 		klog.Errorf("Failed to find NISD with sufficient space: %v", err)
 		return nil, status.Error(codes.ResourceExhausted, err.Error())
@@ -82,8 +82,8 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		CreatedAt: time.Now(),
 	}
 	cs.config.Mutex.Lock()
-	if _, exists := cs.config.Controller.NisdMap[volumeID]; !exists {
-		cs.config.Controller.NisdMap[volumeID] = &types.Nisd{
+	if _, exists := cs.config.Controller.VdevMap[volumeID]; !exists {
+		cs.config.Controller.VdevMap[volumeID] = &types.Vdev{
 			VolMap: make(map[string]*types.Volume),
     		}
 	}
@@ -239,8 +239,8 @@ func (cs *ControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 	var entries []*csi.ListVolumesResponse_Entry
 
 	controller := cs.config.GetController()
-	for _, nisd := range controller.NisdMap {
-		for _, volume := range nisd.VolMap {
+	for _, vdev := range controller.VdevMap {
+		for _, volume := range vdev.VolMap {
 			entries = append(entries, &csi.ListVolumesResponse_Entry{
 				Volume: &csi.Volume{
 					VolumeId:      volume.VolID,

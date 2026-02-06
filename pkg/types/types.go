@@ -2,7 +2,6 @@ package types
 
 import (
 	cpClient "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/client"
-	cplib "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/lib"
 	"github.com/google/uuid"
 	"time"
 )
@@ -10,7 +9,6 @@ import (
 type VolumeStatus string
 
 const (
-	SrcNISD                           = "nisd"
 	SrcCP                             = "control-plane"
 	VolumeStatusCreated  VolumeStatus = "created"
 	VolumeStatusAttached VolumeStatus = "attached"
@@ -18,15 +16,7 @@ const (
 	VolumeStatusDeleted  VolumeStatus = "deleted"
 )
 
-type NisdInfo struct {
-	UUID          uuid.UUID `yaml:"uuid" json:"uuid"`
-	IPAddr        string    `yaml:"ipaddr" json:"ipaddr"`
-	Port          int       `yaml:"port" json:"port"`
-	TotalSize     int64     `yaml:"totalSize" json:"totalSize"`
-	AvailableSize int64     `yaml:"availableSize" json:"availableSize"`
-}
-
-type Nisd struct {
+type Vdev struct {
 	VolMap map[string]*Volume `yaml:"volMap" json:"volMap"`
 }
 
@@ -41,7 +31,7 @@ type Volume struct {
 }
 
 type Controller struct {
-	NisdMap  map[string]*Nisd `yaml:"nisdMap" json:"nisdMap"`
+	VdevMap  map[string]*Vdev `yaml:"nisdMap" json:"nisdMap"`
 	Cpclient *cpClient.CliCFuncs
 }
 
@@ -63,6 +53,3 @@ type VolumeTrackingFile struct {
 	Volumes []*Volume `yaml:"volumes" json:"volumes"`
 }
 
-type NisdConfig struct {
-	Nisds []*cplib.Nisd `yaml:"nisds" json:"nisds"`
-}
