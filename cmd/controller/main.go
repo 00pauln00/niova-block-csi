@@ -38,7 +38,7 @@ func main() {
 	klog.Infof("Starting CSI controller for driver %s version %s", *driverName, *version)
 	klog.Infof("Node ID: %s", *nodeID)
 	klog.Infof("Endpoint: %s", *endpoint)
-	klog.Infof("NISD config path: %s", *ConfigPath)
+	klog.Infof("ControlPlane config path: %s", *ConfigPath)
 	klog.Infof("Raft ID: %s", *raftID)
 
 	// Create config manager
@@ -46,9 +46,10 @@ func main() {
 
 	c := cpClient.InitCliCFuncs(uuid.New().String(), *raftID, *ConfigPath)
 	if err := configManager.LoadCpClient(c); err != nil {
-		klog.Fatalf("Failed to load CP configuration: %v", err)
+		klog.Errorf("Failed to load CP configuration: %v", err)
+		os.Exit(-1)
 	}
-	klog.Info("connection with control plane is sucessful %v", c)
+	klog.Infof("connection with control plane is sucessful %v", c)
 
 	// Create CSI driver
 	csiDriver := driver.NewCSIDriver(*driverName, *version, *nodeID, *endpoint, configManager)
@@ -77,5 +78,5 @@ func main() {
 		klog.Fatalf("Failed to run CSI driver: %v", err)
 	}
 
-	klog.Info("CSI controller stopped")
+	klog.Infof("CSI controller stopped")
 }

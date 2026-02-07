@@ -41,7 +41,7 @@ func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string) (string, in
 	}
 
 	// Command to create niova-ublk device
-	// Format: niova-ublk -v <ublk_id> -u <ublk_id> -t tcp:<nisd_uuid>:<nisd_ip>:<nisd_port> -q <queuedepth> -b <bufsize>
+	// Format: niova-ublk -v <ublk_id> -t cp -q <queuedepth> -b <bufsize> -T
 
 	cmd := exec.Command(um.ublkBinary,
 		"-t", "cp",

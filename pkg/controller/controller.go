@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	//"github.com/google/uuid"
 	"github.com/niova-block-csi/pkg/config"
 	"github.com/niova-block-csi/pkg/types"
 	"google.golang.org/grpc/codes"
@@ -64,16 +63,13 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		volumeSize = 1024 * 1024 * 1024 // 1GB default
 	}
 
-	// Find NISD with available space
-	vdevid, err := cs.config.AllocVdev(volumeSize)
+	// Allocate Vdev of required size
+	volumeID, err := cs.config.AllocVdev(volumeSize)
 	if err != nil {
-		klog.Errorf("Failed to find NISD with sufficient space: %v", err)
+		klog.Errorf("Failed to Allocate Vdev with error : %v", err)
 		return nil, status.Error(codes.ResourceExhausted, err.Error())
 	}
-	klog.Infof("vdevid is : %s", vdevid)
-	// Generate volume ID
-	volumeID := vdevid
-
+	klog.Infof("Allocated vdevid is : %s", volumeID)
 	// Create volume structure
 	volume := &types.Volume{
 		VolID:     volumeID,
@@ -263,11 +259,6 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	klog.Infof("GetCapacity: called with args %+v", req)
 
 	var totalCapacity int64
-	/*	controller := cs.config.GetController()
-		for _, nisd := range controller.NisdMap {
-			totalCapacity += nisd.Info.AvailableSi
-		}*/
-
 	return &csi.GetCapacityResponse{
 		AvailableCapacity: totalCapacity,
 	}, nil

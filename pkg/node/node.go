@@ -69,8 +69,6 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	volumeID := req.GetVolumeId()
 	stagingPath := req.GetStagingTargetPath()
 	publishContext := req.GetPublishContext()
-	// Extract NISD information from publish context
-	//	devicePath := publishContext["devicePath"]
 	volumeSizeStr := publishContext["volumeSize"]
 	_, err := strconv.ParseInt(volumeSizeStr, 10, 64)
 	if err != nil {
