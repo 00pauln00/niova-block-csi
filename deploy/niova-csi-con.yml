@@ -13,12 +13,13 @@ spec:
       labels:
         app: niova-csi-cont
     spec:
-      nodeName: k8s-worker1
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       serviceAccountName: niova-csi-sa
       hostPID: true
       containers:
         - name: niova-csi
-          image: paro1618/niova-csi:controller
+          image: paro1618/niova-csi:controller-v4
           securityContext:
             privileged: true
             capabilities:
@@ -31,12 +32,14 @@ spec:
           imagePullPolicy: Always
           command: ["/bin/sh", "-c"]
           args:
-            - ulimit -l unlimited && exec /opt/niova/niova-block-csi-controller -driver-name=csi.niova.com -version=0.1.0 -node-id=$(NODE_ID) -endpoint=unix:///csi/custom2.sock -nisd-config=/var/lib/niova-csi/nisd-config.yml -volume-tracking=/var/lib/niova-csi/volumes.yml
+            - ulimit -l unlimited && exec /opt/niova/niova-block-csi-controller -driver-name=csi.niova.com -version=0.1.0 -node-id=$(NODE_ID) -endpoint=unix:///csi/custom2.sock -configpath=/etc/niova/gossipNodes -r ${RUN_ID}
           env:
             - name: NODE_ID
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: RUN_ID
+              value: "5c587ba3-0f41-4476-b444-ffc6bba95ff0"
           terminationMessagePath: /tmp/termination-log
           volumeMounts:
             - name: plugin-dir
@@ -64,6 +67,9 @@ spec:
               mountPath: /var/lib/kubelet
             - name: nisd-config
               mountPath: /var/lib/niova-csi
+              mountPropagation: Bidirectional
+            - name: gossip-config
+              mountPath: /etc/niova/gossipNodes
               mountPropagation: Bidirectional
 
         - name: csi-provisioner
@@ -123,4 +129,7 @@ spec:
         - name: nisd-config
           hostPath: 
             path: /var/lib/niova-csi
-
+        - name: gossip-config
+          hostPath:
+            path: /etc/niova/gossipNodes
+            type: File

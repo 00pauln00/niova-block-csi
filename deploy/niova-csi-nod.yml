@@ -16,7 +16,7 @@ spec:
       hostPID: true
       containers:
         - name: niova-csi
-          image: paro1618/niova-csi:node
+          image: paro1618/niova-csi:node-v4
           securityContext:
             privileged: true
             capabilities:
@@ -35,6 +35,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: NIOVA_GOSSIP_PATH
+              value: "/etc/niova/gossipNodes"
+            - name: NIOVA_GOSSIP_KEY
+              value: "5c587ba3-0f41-4476-b444-ffc6bba95ff0"
           terminationMessagePath: /tmp/termination-log
           volumeMounts:
             - name: plugin-dir
@@ -44,8 +48,6 @@ spec:
             - name: niova-var-dir
               mountPath: /var/niova
               mountPropagation: Bidirectional
-            - name: niova-block
-              mountPath: /niova-block
             - name: host-dev
               mountPath: /dev
               mountPropagation: HostToContainer
@@ -54,8 +56,8 @@ spec:
             - name: host-mount
               mountPath: /run
               mountPropagation: Bidirectional
-            - name: lib-modules
-              mountPath: /lib/modules
+            - name: lib
+              mountPath: /lib
             - name: kubelet-dir
               mountPath: /var/lib/kubelet/plugins
               mountPropagation: Bidirectional
@@ -67,6 +69,15 @@ spec:
             - name: nisd-config
               mountPath: /etc/niova
               mountPropagation: Bidirectional
+            - name: sbin-dir
+              mountPath: /usr/sbin
+              mountPropagation: HostToContainer
+            - name: bin-dir
+              mountPath: /bin
+              mountPropagation: HostToContainer
+            - name: usr-bin
+              mountPath: /usr/bin
+              mountPropagation: HostToContainer
 
         - name: driver-registrar
           image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.8.0
@@ -92,10 +103,6 @@ spec:
           hostPath:
             path: /var/niova
             type: DirectoryOrCreate
-        - name: niova-block
-          hostPath:
-            path: /root/niova-block
-            type: DirectoryOrCreate
         - name: host-dev
           hostPath:
             path: /dev
@@ -105,9 +112,9 @@ spec:
         - name: host-mount
           hostPath:
             path: /run
-        - name: lib-modules
+        - name: lib
           hostPath:
-            path: /lib/modules
+            path: /lib
         - name: kubelet-dir
           hostPath:
             path: /var/lib/kubelet/plugins
@@ -120,4 +127,13 @@ spec:
         - name: nisd-config
           hostPath:
             path: /etc/niova
+        - name: sbin-dir
+          hostPath:
+            path: /usr/sbin
+        - name: bin-dir
+          hostPath:
+            path: /bin
+        - name: usr-bin
+          hostPath:
+            path: /usr/bin
 

@@ -69,24 +69,8 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	volumeID := req.GetVolumeId()
 	stagingPath := req.GetStagingTargetPath()
 	publishContext := req.GetPublishContext()
-
-	// Extract NISD information from publish context
-	nisdIPAddr := publishContext["nisdIPAddr"]
-	nisdPortStr := publishContext["nisdPort"]
-	devicePath := publishContext["devicePath"]
 	volumeSizeStr := publishContext["volumeSize"]
-	nisduuid := publishContext["nisdUUID"]
-
-	if nisdIPAddr == "" || nisdPortStr == "" || devicePath == "" {
-		return nil, status.Error(codes.InvalidArgument, "Missing required publish context information")
-	}
-
-	nisdPort, err := strconv.Atoi(nisdPortStr)
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid NISD port: %v", err))
-	}
-
-	_, err = strconv.ParseInt(volumeSizeStr, 10, 64)
+	_, err := strconv.ParseInt(volumeSizeStr, 10, 64)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid volume size: %v", err))
 	}
@@ -94,16 +78,8 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	ns.mutex.Lock()
 	defer ns.mutex.Unlock()
 
-	// Check if volume already staged
-	if nodeVol, exists := ns.node.VolMap[volumeID]; exists {
-		if nodeVol.UblkPath != "" {
-			klog.Infof("Volume %s already staged with ublk device %s", volumeID, nodeVol.UblkPath)
-			return &csi.NodeStageVolumeResponse{}, nil
-		}
-	}
-
 	// Create ublk device
-	ublkDevicePath, ublkpid, err := ns.ublkManager.CreateUblkDevice(volumeID, nisdIPAddr, nisdPort, devicePath, volumeSizeStr, nisduuid)
+	ublkDevicePath, ublkpid, err := ns.ublkManager.CreateUblkDevice(volumeID, volumeSizeStr)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create ublk device: %v", err))
 	}
@@ -134,11 +110,6 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	// Create or update node volume entry
 	nodeVolume := &types.NodeVolume{
 		VolID: volUUID,
-		NisdInfo: types.NisdInfo{
-			IPAddr:     nisdIPAddr,
-			Port:       nisdPort,
-			DevicePath: devicePath,
-		},
 		NodeInfo:    ns.nodeID,
 		UblkPath:    ublkDevicePath,
 		UblkPid:     ublkpid,

@@ -1,6 +1,7 @@
 package types
 
 import (
+	cpClient "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/client"
 	"github.com/google/uuid"
 	"time"
 )
@@ -8,29 +9,19 @@ import (
 type VolumeStatus string
 
 const (
+	SrcCP                             = "control-plane"
 	VolumeStatusCreated  VolumeStatus = "created"
 	VolumeStatusAttached VolumeStatus = "attached"
 	VolumeStatusDetached VolumeStatus = "detached"
 	VolumeStatusDeleted  VolumeStatus = "deleted"
 )
 
-type NisdInfo struct {
-	UUID          uuid.UUID `yaml:"uuid" json:"uuid"`
-	IPAddr        string    `yaml:"ipaddr" json:"ipaddr"`
-	Port          int       `yaml:"port" json:"port"`
-	DevicePath    string    `yaml:"devicePath" json:"devicePath"`
-	TotalSize     int64     `yaml:"totalSize" json:"totalSize"`
-	AvailableSize int64     `yaml:"availableSize" json:"availableSize"`
-}
-
-type Nisd struct {
-	Info   NisdInfo           `yaml:"info" json:"info"`
+type Vdev struct {
 	VolMap map[string]*Volume `yaml:"volMap" json:"volMap"`
 }
 
 type Volume struct {
-	VolID      uuid.UUID    `yaml:"volumeID" json:"volumeID"`
-	NisdInfo   NisdInfo     `yaml:"nisdInfo" json:"nisdInfo"`
+	VolID      string       `yaml:"volumeID" json:"volumeID"`
 	Size       int64        `yaml:"volumeSize" json:"volumeSize"`
 	Path       string       `yaml:"volumePath" json:"volumePath"`
 	NodeName   string       `yaml:"nodeName" json:"nodeName"`
@@ -40,12 +31,12 @@ type Volume struct {
 }
 
 type Controller struct {
-	NisdMap map[string]*Nisd `yaml:"nisdMap" json:"nisdMap"`
+	VdevMap  map[string]*Vdev `yaml:"nisdMap" json:"nisdMap"`
+	Cpclient *cpClient.CliCFuncs
 }
 
 type NodeVolume struct {
 	VolID       uuid.UUID    `yaml:"volumeID" json:"volumeID"`
-	NisdInfo    NisdInfo     `yaml:"nisdInfo" json:"nisdInfo"`
 	NodeInfo    string       `yaml:"nodeInfo" json:"nodeInfo"`
 	UblkPath    string       `yaml:"ublkPath" json:"ublkPath"`
 	UblkPid     int          `yaml:"ublkPid" json:"ublkPid"`
@@ -62,6 +53,3 @@ type VolumeTrackingFile struct {
 	Volumes []*Volume `yaml:"volumes" json:"volumes"`
 }
 
-type NisdConfig struct {
-	Nisds []*NisdInfo `yaml:"nisds" json:"nisds"`
-}

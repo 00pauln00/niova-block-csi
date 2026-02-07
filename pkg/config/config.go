@@ -1,136 +1,103 @@
+
 package config
 
 import (
 	"fmt"
-	"io/ioutil"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
+	cpClient "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/client"
+	ctlplfl "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/lib"
 	"github.com/niova-block-csi/pkg/types"
-	"gopkg.in/yaml.v2"
 	"k8s.io/klog/v2"
 )
 
 type ConfigManager struct {
-	nisdConfigPath     string
-	volumeTrackingPath string
-	controller         *types.Controller
+	CpConfigPath     string
+	Controller         *types.Controller
 	Mutex              sync.RWMutex
 }
 
-func NewConfigManager(nisdConfigPath, volumeTrackingPath string) *ConfigManager {
+func NewConfigManager(cpConfigPath string) *ConfigManager {
 	return &ConfigManager{
-		nisdConfigPath:     nisdConfigPath,
-		volumeTrackingPath: volumeTrackingPath,
-		controller: &types.Controller{
-			NisdMap: make(map[string]*types.Nisd),
+		CpConfigPath:     cpConfigPath,
+		Controller: &types.Controller{
+			VdevMap: make(map[string]*types.Vdev),
 		},
 	}
 }
 
-func (cm *ConfigManager) LoadNisdConfig() error {
-
-	cm.Mutex.Lock()
-	defer cm.Mutex.Unlock()
-
-	data, err := ioutil.ReadFile(cm.nisdConfigPath)
-	if err != nil {
-		return fmt.Errorf("failed to read NISD config file: %v", err)
-	}
-
-	var config types.NisdConfig
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return fmt.Errorf("failed to parse NISD config: %v", err)
-	}
-
-	cm.controller.NisdMap = make(map[string]*types.Nisd)
-	for _, nisdInfo := range config.Nisds {
-		// Validate device path exists
-		if _, err := os.Stat(nisdInfo.DevicePath); err != nil {
-			klog.Warningf("Device path %s for NISD %s does not exist or is not accessible: %v",
-				nisdInfo.DevicePath, nisdInfo.UUID.String(), err)
-		}
-
-		nisd := &types.Nisd{
-			Info:   *nisdInfo,
-			VolMap: make(map[string]*types.Volume),
-		}
-		cm.controller.NisdMap[nisdInfo.UUID.String()] = nisd
-	}
-
-	klog.Infof("Loaded %d NISD backends from config", len(config.Nisds))
+func (cm *ConfigManager) LoadCpClient(c *cpClient.CliCFuncs) error {
+	cm.Controller.VdevMap = make(map[string]*types.Vdev)
+	cm.Controller.Cpclient = c
 	return nil
 }
+
 
 func (cm *ConfigManager) GetController() *types.Controller {
 	cm.Mutex.Lock()
 	defer cm.Mutex.Unlock()
-	return cm.controller
+	return cm.Controller
 }
 
-func (cm *ConfigManager) FindNisdWithSpace(requiredSize int64) (*types.Nisd, error) {
+func (cm *ConfigManager) AllocVdev(requiredSize int64) (string, error) {
 	cm.Mutex.RLock()
 	defer cm.Mutex.RUnlock()
-
-	for _, nisd := range cm.controller.NisdMap {
-		if nisd.Info.AvailableSize >= requiredSize {
-			return nisd, nil
-		}
+	// TODO: NumReplica should be passed from PVC file.
+	Vdev := ctlplfl.Vdev{
+		Cfg: ctlplfl.VdevCfg {
+			Size: requiredSize,
+			NumReplica: 1,
+		},
 	}
-	return nil, fmt.Errorf("no NISD with sufficient space (%d bytes) found", requiredSize)
+	klog.Infof("Create vdev of size", Vdev.Cfg.Size)
+	resp, err := cm.Controller.Cpclient.CreateVdev(&Vdev)
+	if err != nil {
+		klog.Infof("nisd is not allocated", err)
+		return "", fmt.Errorf("failed to get nisd %w", err)
+	}
+	klog.Infof("Created Vdev of UUID :%+v", resp.ID)
+
+	return resp.ID, nil
 }
 
-func (cm *ConfigManager) UpdateNisdAvailableSize(nisdUUID string, sizeChange int64) error {
 
-	nisd, exists := cm.controller.NisdMap[nisdUUID]
+func (cm *ConfigManager) AddVolumeLocked(volume *types.Volume) error {
+	vdev, exists := cm.Controller.VdevMap[volume.VolID]
 	if !exists {
-		return fmt.Errorf("NISD with UUID %s not found", nisdUUID)
+		return fmt.Errorf("vdev %s not initialized", volume.VolID)
 	}
-
-	nisd.Info.AvailableSize += sizeChange
-	if nisd.Info.AvailableSize < 0 {
-		nisd.Info.AvailableSize = 0
-	}
+	vdev.VolMap[volume.VolID] = volume
 	return nil
 }
 
-func (cm *ConfigManager) AddVolume(volume *types.Volume) error {
-
-	nisd, exists := cm.controller.NisdMap[volume.NisdInfo.UUID.String()]
-	if !exists {
-		return fmt.Errorf("NISD with UUID %s not found", volume.NisdInfo.UUID.String())
-	}
-	nisd.VolMap[volume.VolID.String()] = volume
-	return cm.saveVolumeTracking()
-}
 
 func (cm *ConfigManager) RemoveVolume(volumeID string) error {
 
-	for _, nisd := range cm.controller.NisdMap {
-		if vol, exists := nisd.VolMap[volumeID]; exists {
-			delete(nisd.VolMap, volumeID)
-			cm.UpdateNisdAvailableSize(vol.NisdInfo.UUID.String(), vol.Size)
-			return cm.saveVolumeTracking()
+	for _, vdev := range cm.Controller.VdevMap {
+		if _, exists := vdev.VolMap[volumeID]; exists {
+			delete(vdev.VolMap, volumeID)
+			return nil
 		}
 	}
 	return fmt.Errorf("volume %s not found", volumeID)
 }
 
 func (cm *ConfigManager) GetVolume(volumeID string) (*types.Volume, error) {
-
-	for _, nisd := range cm.controller.NisdMap {
-		if vol, exists := nisd.VolMap[volumeID]; exists {
-			return vol, nil
-		}
+	vdev, exists := cm.Controller.VdevMap[volumeID]
+	if !exists {
+		return nil, fmt.Errorf("volume %s not found", volumeID)
 	}
-	return nil, fmt.Errorf("volume %s not found", volumeID)
+	vol, exists := vdev.VolMap[volumeID]
+	if !exists {
+		return nil, fmt.Errorf("volume %s not found", volumeID)
+	}
+	return vol, nil
 }
 
 func (cm *ConfigManager) UpdateVolumeStatus(volumeID string, status types.VolumeStatus, nodeName string) error {
 
-	for _, nisd := range cm.controller.NisdMap {
+	for _, nisd := range cm.Controller.VdevMap {
 		if vol, exists := nisd.VolMap[volumeID]; exists {
 			vol.Status = status
 			vol.NodeName = nodeName
@@ -142,66 +109,9 @@ func (cm *ConfigManager) UpdateVolumeStatus(volumeID string, status types.Volume
 				vol.AttachedAt = nil
 			}
 
-			return cm.saveVolumeTracking()
+			return nil
 		}
 	}
 	return fmt.Errorf("volume %s not found", volumeID)
 }
 
-func (cm *ConfigManager) saveVolumeTracking() error {
-	var allVolumes []*types.Volume
-
-	for _, nisd := range cm.controller.NisdMap {
-		for _, volume := range nisd.VolMap {
-			allVolumes = append(allVolumes, volume)
-		}
-	}
-
-	trackingFile := &types.VolumeTrackingFile{
-		Volumes: allVolumes,
-	}
-
-	data, err := yaml.Marshal(trackingFile)
-	if err != nil {
-		return fmt.Errorf("failed to marshal volume tracking data: %v", err)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(cm.volumeTrackingPath), 0755); err != nil {
-		return fmt.Errorf("failed to create directory for volume tracking file: %v", err)
-	}
-
-	if err := ioutil.WriteFile(cm.volumeTrackingPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write volume tracking file: %v", err)
-	}
-
-	return nil
-}
-
-func (cm *ConfigManager) LoadVolumeTracking() error {
-	cm.Mutex.Lock()
-	defer cm.Mutex.Unlock()
-
-	if _, err := os.Stat(cm.volumeTrackingPath); os.IsNotExist(err) {
-		klog.Info("Volume tracking file does not exist, starting fresh")
-		return nil
-	}
-
-	data, err := ioutil.ReadFile(cm.volumeTrackingPath)
-	if err != nil {
-		return fmt.Errorf("failed to read volume tracking file: %v", err)
-	}
-
-	var trackingFile types.VolumeTrackingFile
-	if err := yaml.Unmarshal(data, &trackingFile); err != nil {
-		return fmt.Errorf("failed to parse volume tracking file: %v", err)
-	}
-
-	for _, volume := range trackingFile.Volumes {
-		if nisd, exists := cm.controller.NisdMap[volume.NisdInfo.UUID.String()]; exists {
-			nisd.VolMap[volume.VolID.String()] = volume
-		}
-	}
-
-	klog.Infof("Loaded %d volumes from tracking file", len(trackingFile.Volumes))
-	return nil
-}

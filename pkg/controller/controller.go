@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/google/uuid"
 	"github.com/niova-block-csi/pkg/config"
 	"github.com/niova-block-csi/pkg/types"
 	"google.golang.org/grpc/codes"
@@ -64,51 +63,41 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		volumeSize = 1024 * 1024 * 1024 // 1GB default
 	}
 
-	// Find NISD with available space
-	nisd, err := cs.config.FindNisdWithSpace(volumeSize)
+	// Allocate Vdev of required size
+	volumeID, err := cs.config.AllocVdev(volumeSize)
 	if err != nil {
-		klog.Errorf("Failed to find NISD with sufficient space: %v", err)
+		klog.Errorf("Failed to Allocate Vdev with error : %v", err)
 		return nil, status.Error(codes.ResourceExhausted, err.Error())
 	}
-	// Generate volume ID
-	volumeID := uuid.New()
-
+	klog.Infof("Allocated vdevid is : %s", volumeID)
 	// Create volume structure
 	volume := &types.Volume{
 		VolID:     volumeID,
-		NisdInfo:  nisd.Info,
 		Size:      volumeSize,
 		Status:    types.VolumeStatusCreated,
 		CreatedAt: time.Now(),
 	}
 	cs.config.Mutex.Lock()
+	if _, exists := cs.config.Controller.VdevMap[volumeID]; !exists {
+		cs.config.Controller.VdevMap[volumeID] = &types.Vdev{
+			VolMap: make(map[string]*types.Volume),
+    		}
+	}
 	// Add volume to config manager
-	if err := cs.config.AddVolume(volume); err != nil {
+	if err := cs.config.AddVolumeLocked(volume); err != nil {
 		klog.Errorf("Failed to add volume to config: %v", err)
 		cs.config.Mutex.Unlock()
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create volume: %v", err))
 	}
 
-	// Update NISD available size
-	if err := cs.config.UpdateNisdAvailableSize(nisd.Info.UUID.String(), -volumeSize); err != nil {
-		klog.Errorf("Failed to update NISD available size: %v", err)
-		cs.config.Mutex.Unlock()
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to update NISD size: %v", err))
-	}
 	cs.config.Mutex.Unlock()
 
-	klog.Infof("Created volume %s of size %d bytes on NISD %s", volumeID.String(), volumeSize, nisd.Info.UUID.String())
+	klog.Infof("Created volume %s of size %d bytes on NISD %s", volumeID, volumeSize)
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			VolumeId:      volumeID.String(),
+			VolumeId:      volumeID,
 			CapacityBytes: volumeSize,
-			VolumeContext: map[string]string{
-				"nisdUUID":   nisd.Info.UUID.String(),
-				"nisdIPAddr": nisd.Info.IPAddr,
-				"nisdPort":   fmt.Sprintf("%d", nisd.Info.Port),
-				"devicePath": nisd.Info.DevicePath,
-			},
 		},
 	}, nil
 }
@@ -176,10 +165,7 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 
 	return &csi.ControllerPublishVolumeResponse{
 		PublishContext: map[string]string{
-			"nisdUUID":   volume.NisdInfo.UUID.String(),
-			"nisdIPAddr": volume.NisdInfo.IPAddr,
-			"nisdPort":   fmt.Sprintf("%d", volume.NisdInfo.Port),
-			"devicePath": volume.NisdInfo.DevicePath,
+			"volumeID": volume.VolID,
 			"volumeSize": fmt.Sprintf("%d", volume.Size),
 		},
 	}, nil
@@ -249,17 +235,13 @@ func (cs *ControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 	var entries []*csi.ListVolumesResponse_Entry
 
 	controller := cs.config.GetController()
-	for _, nisd := range controller.NisdMap {
-		for _, volume := range nisd.VolMap {
+	for _, vdev := range controller.VdevMap {
+		for _, volume := range vdev.VolMap {
 			entries = append(entries, &csi.ListVolumesResponse_Entry{
 				Volume: &csi.Volume{
-					VolumeId:      volume.VolID.String(),
+					VolumeId:      volume.VolID,
 					CapacityBytes: volume.Size,
 					VolumeContext: map[string]string{
-						"nisdUUID":   volume.NisdInfo.UUID.String(),
-						"nisdIPAddr": volume.NisdInfo.IPAddr,
-						"nisdPort":   fmt.Sprintf("%d", volume.NisdInfo.Port),
-						"devicePath": volume.NisdInfo.DevicePath,
 						"status":     string(volume.Status),
 						"nodeName":   volume.NodeName,
 					},
@@ -277,11 +259,6 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	klog.Infof("GetCapacity: called with args %+v", req)
 
 	var totalCapacity int64
-	controller := cs.config.GetController()
-	for _, nisd := range controller.NisdMap {
-		totalCapacity += nisd.Info.AvailableSize
-	}
-
 	return &csi.GetCapacityResponse{
 		AvailableCapacity: totalCapacity,
 	}, nil

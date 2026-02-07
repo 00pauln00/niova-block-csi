@@ -7,16 +7,18 @@ import (
 	"os/signal"
 	"syscall"
 
+	cpClient "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/client"
+	"github.com/google/uuid"
 	"github.com/niova-block-csi/pkg/config"
 	"github.com/niova-block-csi/pkg/driver"
 	"k8s.io/klog/v2"
 )
 
 var (
-	endpoint           = flag.String("endpoint", "unix:///var/lib/kubelet/plugins/niova-block-csi/csi.sock", "CSI endpoint")
-	nodeID             = flag.String("node-id", "", "Node ID")
-	nisdConfigPath     = flag.String("nisd-config", "/var/lib/niova-csi/nisd-config.yml", "Path to NISD configuration file")
-	volumeTrackingPath = flag.String("volume-tracking", "/var/lib/niova-csi/volumes.yml", "Path to volume tracking file")
+	endpoint = flag.String("endpoint", "unix:///var/lib/kubelet/plugins/niova-block-csi/csi.sock", "CSI endpoint")
+	raftID   = flag.String("r", "", "pass the raft uuid")
+	nodeID   = flag.String("node-id", "", "Node ID")
+	ConfigPath         = flag.String("configpath", "./gossipNodes", "Path to gossip configuration file")
 	driverName         = flag.String("driver-name", "niova-block-csi", "Name of the CSI driver")
 	version            = flag.String("version", "v1.0.0", "Version of the CSI driver")
 )
@@ -36,21 +38,18 @@ func main() {
 	klog.Infof("Starting CSI controller for driver %s version %s", *driverName, *version)
 	klog.Infof("Node ID: %s", *nodeID)
 	klog.Infof("Endpoint: %s", *endpoint)
-	klog.Infof("NISD config path: %s", *nisdConfigPath)
-	klog.Infof("Volume tracking path: %s", *volumeTrackingPath)
+	klog.Infof("ControlPlane config path: %s", *ConfigPath)
+	klog.Infof("Raft ID: %s", *raftID)
 
 	// Create config manager
-	configManager := config.NewConfigManager(*nisdConfigPath, *volumeTrackingPath)
+	configManager := config.NewConfigManager(*ConfigPath)
 
-	// Load NISD configuration
-	if err := configManager.LoadNisdConfig(); err != nil {
-		klog.Fatalf("Failed to load NISD configuration: %v", err)
+	c := cpClient.InitCliCFuncs(uuid.New().String(), *raftID, *ConfigPath)
+	if err := configManager.LoadCpClient(c); err != nil {
+		klog.Errorf("Failed to load CP configuration: %v", err)
+		os.Exit(-1)
 	}
-
-	// Load existing volume tracking
-	if err := configManager.LoadVolumeTracking(); err != nil {
-		klog.Fatalf("Failed to load volume tracking: %v", err)
-	}
+	klog.Infof("connection with control plane is sucessful %v", c)
 
 	// Create CSI driver
 	csiDriver := driver.NewCSIDriver(*driverName, *version, *nodeID, *endpoint, configManager)
@@ -79,5 +78,5 @@ func main() {
 		klog.Fatalf("Failed to run CSI driver: %v", err)
 	}
 
-	klog.Info("CSI controller stopped")
+	klog.Infof("CSI controller stopped")
 }

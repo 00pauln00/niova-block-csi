@@ -32,37 +32,35 @@ func NewUblkManager() *UblkManager {
 	}
 }
 
-func (um *UblkManager) CreateUblkDevice(volumeID, nisdIPAddr string, nisdPort int, devicePath, volumesize string, nisdUUID string) (string, int, error) {
-	klog.Infof("Creating ublk device for volume %s using NISD %s:%d, device %s",
-		volumeID, nisdIPAddr, nisdPort, devicePath)
+func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string) (string, int, error) {
+	klog.Infof("Creating ublk device for volume %s",volumeID)
 
 	beforeublkDevices, err := lsblkDevices()
 	if err != nil {
 		return "", -1, status.Errorf(codes.Internal, "failed to list devices before start: %v", err)
 	}
 
-	nisdtPath := prepareTargetPath(nisdUUID, nisdIPAddr, nisdPort)
-
 	// Command to create niova-ublk device
-	// Format: niova-ublk -v <ublk_id> -u <ublk_id> -t tcp:<nisd_uuid>:<nisd_ip>:<nisd_port> -q <queuedepth> -b <bufsize>
+	// Format: niova-ublk -v <ublk_id> -t cp -q <queuedepth> -b <bufsize> -T
 
 	cmd := exec.Command(um.ublkBinary,
-		"-s", volumesize,
-		"-t", nisdtPath,
+		"-t", "cp",
 		"-v", volumeID,
-		"-u", volumeID,
 		"-q", QUEUEDEPTH,
 		"-b", MAXBUFSIZE,
+		"-T",
 	)
 	cmd.Env = append(cmd.Env,
 		fmt.Sprintf("LD_LIBRARY_PATH=%s", ldLibraryPath),
-		fmt.Sprintf("NIOVA_BLOCK_TCP_PEER_PORT=%d", nisdPort),
+		fmt.Sprintf("NIOVA_GOSSIP_PATH=%s",os.Getenv("NIOVA_GOSSIP_PATH")),
+		fmt.Sprintf("NIOVA_GOSSIP_KEY=%s",os.Getenv("NIOVA_GOSSIP_KEY")),
 	)
 	cmd.Dir = workingDir
 	if err := cmd.Start(); err != nil {
 		return "", -1, status.Errorf(codes.Internal, "failed to start ublk: %v", err)
 	}
-
+	
+	klog.Infof("ENV variables gossipPath: %s and raftuuid: %s ", os.Getenv("NIOVA_GOSSIP_PATH"), os.Getenv("NIOVA_GOSSIP_KEY"))
 	klog.Infof("Executing command: %s", cmd.String())
 
 	ublkDevicePath, err := waitForDevice(beforeublkDevices)
