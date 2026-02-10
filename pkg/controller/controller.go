@@ -62,7 +62,18 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if volumeSize == 0 {
 		volumeSize = 1024 * 1024 * 1024 // 1GB default
 	}
-
+	caps := req.GetVolumeCapabilities()
+	if len(caps) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "VolumeCapabilities missing")
+	}
+	cap := caps[0]
+	if cap.GetMount() == nil && cap.GetBlock() == nil {
+		return nil, status.Error(codes.InvalidArgument, "Unsupported volume capability")
+	}
+	volumeMode := "mount"
+	if cap.GetBlock() != nil {
+		volumeMode = "block"
+	}
 	// Allocate Vdev of required size
 	volumeID, err := cs.config.AllocVdev(volumeSize)
 	if err != nil {
@@ -72,16 +83,17 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	klog.Infof("Allocated vdevid is : %s", volumeID)
 	// Create volume structure
 	volume := &types.Volume{
-		VolID:     volumeID,
-		Size:      volumeSize,
-		Status:    types.VolumeStatusCreated,
-		CreatedAt: time.Now(),
+		VolID:      volumeID,
+		Size:       volumeSize,
+		Status:     types.VolumeStatusCreated,
+		VolumeMode: volumeMode,
+		CreatedAt:  time.Now(),
 	}
 	cs.config.Mutex.Lock()
 	if _, exists := cs.config.Controller.VdevMap[volumeID]; !exists {
 		cs.config.Controller.VdevMap[volumeID] = &types.Vdev{
 			VolMap: make(map[string]*types.Volume),
-    		}
+		}
 	}
 	// Add volume to config manager
 	if err := cs.config.AddVolumeLocked(volume); err != nil {
@@ -165,7 +177,7 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 
 	return &csi.ControllerPublishVolumeResponse{
 		PublishContext: map[string]string{
-			"volumeID": volume.VolID,
+			"volumeID":   volume.VolID,
 			"volumeSize": fmt.Sprintf("%d", volume.Size),
 		},
 	}, nil
@@ -214,13 +226,20 @@ func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 
 	// Check if volume exists
 	cs.config.Mutex.Lock()
-	_, err := cs.config.GetVolume(req.GetVolumeId())
+	vol, err := cs.config.GetVolume(req.GetVolumeId())
 	if err != nil {
 		cs.config.Mutex.Unlock()
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume %s not found", req.GetVolumeId()))
 	}
 	cs.config.Mutex.Unlock()
-
+	for _, cap := range req.GetVolumeCapabilities() {
+		if cap.GetBlock() != nil && vol.VolumeMode != "block" {
+			return &csi.ValidateVolumeCapabilitiesResponse{}, nil
+		}
+		if cap.GetMount() != nil && vol.VolumeMode != "mount" {
+			return &csi.ValidateVolumeCapabilitiesResponse{}, nil
+		}
+	}
 	// For now, we support all requested capabilities
 	return &csi.ValidateVolumeCapabilitiesResponse{
 		Confirmed: &csi.ValidateVolumeCapabilitiesResponse_Confirmed{
@@ -242,8 +261,8 @@ func (cs *ControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 					VolumeId:      volume.VolID,
 					CapacityBytes: volume.Size,
 					VolumeContext: map[string]string{
-						"status":     string(volume.Status),
-						"nodeName":   volume.NodeName,
+						"status":   string(volume.Status),
+						"nodeName": volume.NodeName,
 					},
 				},
 			})

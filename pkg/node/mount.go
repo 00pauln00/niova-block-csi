@@ -100,14 +100,22 @@ func (mm *MountManager) FormatAndMountDevice(devicePath, targetPath, requestedFs
 	return nil
 }
 
+func (mm *MountManager) BindRawBlock(sourcePath, targetPath string) error {
+	info, _ := os.Stat(targetPath)
+	klog.Infof("targetPath isDir=%v mode=%v", info.IsDir(), info.Mode())
+	// Perform bind mount
+	if err := mm.mounter.Mount(sourcePath, targetPath, "", []string{"bind"}); err != nil {
+		return fmt.Errorf("failed to bind mount %s to %s: %v", sourcePath, targetPath, err)
+	}
+	return nil 
+}
+
 func (mm *MountManager) BindMount(sourcePath, targetPath string) error {
 	klog.Infof("Bind mounting %s to %s", sourcePath, targetPath)
-
 	// Create target directory if it doesn't exist
 	if err := os.MkdirAll(targetPath, 0755); err != nil {
 		return fmt.Errorf("failed to create target directory %s: %v", targetPath, err)
 	}
-
 	// Check if already mounted
 	mounted, err := mm.mounter.IsMountPoint(targetPath)
 	if err != nil {
