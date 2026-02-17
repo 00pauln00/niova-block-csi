@@ -11,6 +11,8 @@ type VolumeStatus string
 
 const (
 	SrcCP                             = "control-plane"
+	BLOCK_MODE			  = "block"
+	MOUNT_MODE			  = "mount"
 	VolumeStatusCreated  VolumeStatus = "created"
 	VolumeStatusAttached VolumeStatus = "attached"
 	VolumeStatusDetached VolumeStatus = "detached"

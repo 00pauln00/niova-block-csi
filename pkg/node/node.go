@@ -68,9 +68,9 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	cap := req.GetVolumeCapability()
 	isBlock := cap.GetBlock() != nil
 	isMount := cap.GetMount() != nil
-	mode := "mount"
+	mode := types.MOUNT_MODE
 	if isBlock {
-		mode = "block"
+		mode = types.BLOCK_MODE
 	}
 
 	volumeID := req.GetVolumeId()
@@ -92,13 +92,13 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 	if isMount {
 		// Determine filesystem type from volume capability
+		// TODO: Get File system type from yml
 		fsType := "ext4" // default
 		if req.GetVolumeCapability().GetMount() != nil {
 			if req.GetVolumeCapability().GetMount().GetFsType() != "" {
 				fsType = req.GetVolumeCapability().GetMount().GetFsType()
 			}
 		}
-
 		// Format and mount the ublk device to staging path
 		if err := ns.mountManager.FormatAndMountDevice(ublkDevicePath, stagingPath, fsType); err != nil {
 			// Cleanup ublk device on failure
@@ -156,7 +156,7 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	}
 
 	// Unmount from staging path
-	if nodeVol.VolumeMode == "mount" {
+	if nodeVol.VolumeMode == types.MOUNT_MODE {
 		if err := ns.mountManager.Unmount(stagingPath); err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to unmount staging path: %v", err))
 		}
@@ -268,7 +268,7 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	}
 
 	// Clean up target path
-	if nodeVol.VolumeMode == "block" {
+	if nodeVol.VolumeMode == types.BLOCK_MODE {
 		_ = os.Remove(targetPath)
 	} else {
 		if err := ns.mountManager.CleanupMountPoint(targetPath); err != nil {
@@ -294,7 +294,7 @@ func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 		return nil, status.Error(codes.InvalidArgument, "Volume path cannot be empty")
 	}
 	if nodeVol, ok := ns.node.VolMap[req.GetVolumeId()]; ok {
-		if nodeVol.VolumeMode == "block" {
+		if nodeVol.VolumeMode == types.BLOCK_MODE {
 			return nil, status.Error(codes.Unimplemented, "Block volume stats not supported")
 		}
 	}

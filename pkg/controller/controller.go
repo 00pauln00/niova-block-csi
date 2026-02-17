@@ -70,9 +70,9 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if cap.GetMount() == nil && cap.GetBlock() == nil {
 		return nil, status.Error(codes.InvalidArgument, "Unsupported volume capability")
 	}
-	volumeMode := "mount"
+	volumeMode := types.MOUNT_MODE
 	if cap.GetBlock() != nil {
-		volumeMode = "block"
+		volumeMode = types.BLOCK_MODE
 	}
 	// Allocate Vdev of required size
 	volumeID, err := cs.config.AllocVdev(volumeSize)
@@ -233,10 +233,10 @@ func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 	}
 	cs.config.Mutex.Unlock()
 	for _, cap := range req.GetVolumeCapabilities() {
-		if cap.GetBlock() != nil && vol.VolumeMode != "block" {
+		if cap.GetBlock() != nil && vol.VolumeMode != types.BLOCK_MODE {
 			return &csi.ValidateVolumeCapabilitiesResponse{}, nil
 		}
-		if cap.GetMount() != nil && vol.VolumeMode != "mount" {
+		if cap.GetMount() != nil && vol.VolumeMode != types.MOUNT_MODE {
 			return &csi.ValidateVolumeCapabilitiesResponse{}, nil
 		}
 	}
