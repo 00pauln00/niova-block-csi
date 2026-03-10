@@ -67,7 +67,6 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 	cap := req.GetVolumeCapability()
 	isBlock := cap.GetBlock() != nil
-	isMount := cap.GetMount() != nil
 	mode := types.MOUNT_MODE
 	if isBlock {
 		mode = types.BLOCK_MODE
@@ -90,7 +89,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create ublk device: %v", err))
 	}
-	if isMount {
+	if mode == types.MOUNT_MODE {
 		// Determine filesystem type from volume capability
 		// TODO: Get File system type from yml
 		fsType := "ext4" // default
@@ -105,16 +104,15 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 			ns.ublkManager.DeleteUblkDevice(volumeID, ublkDevicePath, ublkpid)
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to mount device: %v", err))
 		}
-
-		// Parse volume ID to UUID
-		volUUID, err = uuid.Parse(volumeID)
-		if err != nil {
-			klog.Errorf("Failed to parse volume ID %s: %v", volumeID, err)
-			ns.ublkManager.DeleteUblkDevice(volumeID, ublkDevicePath, ublkpid)
-			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid volume ID format: %v", err))
-		}
 	}
 
+	// Parse volume ID to UUID
+	volUUID, err = uuid.Parse(volumeID)
+	if err != nil {
+		klog.Errorf("Failed to parse volume ID %s: %v", volumeID, err)
+		ns.ublkManager.DeleteUblkDevice(volumeID, ublkDevicePath, ublkpid)
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid volume ID format: %v", err))
+	}
 	// Create or update node volume entry
 	nodeVolume := &types.NodeVolume{
 		VolID:       volUUID,

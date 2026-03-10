@@ -233,10 +233,10 @@ func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 	}
 	cs.config.Mutex.Unlock()
 	for _, cap := range req.GetVolumeCapabilities() {
-		if cap.GetBlock() != nil && vol.VolumeMode != types.BLOCK_MODE {
+		if cap.GetBlock() != nil && vol.VolumeMode == types.BLOCK_MODE {
 			return &csi.ValidateVolumeCapabilitiesResponse{}, nil
 		}
-		if cap.GetMount() != nil && vol.VolumeMode != types.MOUNT_MODE {
+		if cap.GetMount() != nil && vol.VolumeMode == types.MOUNT_MODE {
 			return &csi.ValidateVolumeCapabilitiesResponse{}, nil
 		}
 	}

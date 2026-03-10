@@ -101,10 +101,22 @@ func (mm *MountManager) FormatAndMountDevice(devicePath, targetPath, requestedFs
 }
 
 func (mm *MountManager) BindRawBlock(sourcePath, targetPath string) error {
-	info, _ := os.Stat(targetPath)
+	info, err := os.Stat(targetPath)
+	if err != nil {
+		return fmt.Errorf("failed to find target path %s: %v", targetPath, err)
+	}
 	klog.Infof("targetPath isDir=%v mode=%v", info.IsDir(), info.Mode())
+	// Check if already mounted
+	mounted, err := mm.mounter.IsMountPoint(targetPath)
+	if err != nil {
+		 return fmt.Errorf("failed to check if target is mounted: %v", err)
+	}
+	if mounted {
+		klog.Infof("Path %s is already mounted at %s", sourcePath, targetPath)
+		return nil
+	}
 	// Perform bind mount
-	if err := mm.mounter.Mount(sourcePath, targetPath, "", []string{"bind"}); err != nil {
+	if err = mm.mounter.Mount(sourcePath, targetPath, "", []string{"bind"}); err != nil {
 		return fmt.Errorf("failed to bind mount %s to %s: %v", sourcePath, targetPath, err)
 	}
 	return nil 

@@ -44,14 +44,14 @@ func (cm *ConfigManager) AllocVdev(requiredSize int64) (string, error) {
 	cm.Mutex.RLock()
 	defer cm.Mutex.RUnlock()
 	// TODO: NumReplica should be passed from PVC file.
-	Vdev := ctlplfl.Vdev{
-		Cfg: ctlplfl.VdevCfg {
+	Vdev := &ctlplfl.VdevReq{
+		Vdev: &ctlplfl.VdevCfg {
 			Size: requiredSize,
 			NumReplica: 1,
 		},
 	}
-	klog.Infof("Create vdev of size", Vdev.Cfg.Size)
-	resp, err := cm.Controller.Cpclient.CreateVdev(&Vdev)
+	klog.Infof("Create vdev of size", Vdev.Vdev.Size)
+	resp, err := cm.Controller.Cpclient.CreateVdev(Vdev)
 	if err != nil {
 		klog.Infof("nisd is not allocated", err)
 		return "", fmt.Errorf("failed to get nisd %w", err)
