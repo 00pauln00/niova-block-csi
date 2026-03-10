@@ -83,7 +83,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 
 	ns.mutex.Lock()
 	defer ns.mutex.Unlock()
-	var volUUID uuid.UUID 
+	var volUUID uuid.UUID
 	// Create ublk device
 	ublkDevicePath, ublkpid, err := ns.ublkManager.CreateUblkDevice(volumeID, volumeSizeStr)
 	if err != nil {

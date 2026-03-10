@@ -109,7 +109,7 @@ func (mm *MountManager) BindRawBlock(sourcePath, targetPath string) error {
 	// Check if already mounted
 	mounted, err := mm.mounter.IsMountPoint(targetPath)
 	if err != nil {
-		 return fmt.Errorf("failed to check if target is mounted: %v", err)
+		return fmt.Errorf("failed to check if target is mounted: %v", err)
 	}
 	if mounted {
 		klog.Infof("Path %s is already mounted at %s", sourcePath, targetPath)
@@ -119,7 +119,7 @@ func (mm *MountManager) BindRawBlock(sourcePath, targetPath string) error {
 	if err = mm.mounter.Mount(sourcePath, targetPath, "", []string{"bind"}); err != nil {
 		return fmt.Errorf("failed to bind mount %s to %s: %v", sourcePath, targetPath, err)
 	}
-	return nil 
+	return nil
 }
 
 func (mm *MountManager) BindMount(sourcePath, targetPath string) error {

@@ -33,7 +33,7 @@ func NewUblkManager() *UblkManager {
 }
 
 func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string) (string, int, error) {
-	klog.Infof("Creating ublk device for volume %s",volumeID)
+	klog.Infof("Creating ublk device for volume %s", volumeID)
 
 	beforeublkDevices, err := lsblkDevices()
 	if err != nil {
@@ -52,14 +52,14 @@ func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string) (string, in
 	)
 	cmd.Env = append(cmd.Env,
 		fmt.Sprintf("LD_LIBRARY_PATH=%s", ldLibraryPath),
-		fmt.Sprintf("NIOVA_GOSSIP_PATH=%s",os.Getenv("NIOVA_GOSSIP_PATH")),
-		fmt.Sprintf("NIOVA_GOSSIP_KEY=%s",os.Getenv("NIOVA_GOSSIP_KEY")),
+		fmt.Sprintf("NIOVA_GOSSIP_PATH=%s", os.Getenv("NIOVA_GOSSIP_PATH")),
+		fmt.Sprintf("NIOVA_GOSSIP_KEY=%s", os.Getenv("NIOVA_GOSSIP_KEY")),
 	)
 	cmd.Dir = workingDir
 	if err := cmd.Start(); err != nil {
 		return "", -1, status.Errorf(codes.Internal, "failed to start ublk: %v", err)
 	}
-	
+
 	klog.Infof("ENV variables gossipPath: %s and raftuuid: %s ", os.Getenv("NIOVA_GOSSIP_PATH"), os.Getenv("NIOVA_GOSSIP_KEY"))
 	klog.Infof("Executing command: %s", cmd.String())
 
