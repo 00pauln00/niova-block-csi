@@ -71,8 +71,16 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	// Allocate Vdev of required size
 	volumeID, err := cs.config.AllocVdev(volumeSize)
 	if err != nil {
-		klog.Errorf("Failed to Allocate Vdev with error : %v", err)
-		return nil, status.Error(codes.ResourceExhausted, err.Error())
+		err = cs.config.VerifyTokenExpiryAndReLogin(err)
+		if err != nil {
+			klog.Errorf("Failed to ReLogin with error : %v", err)
+			return nil, status.Error(codes.ResourceExhausted, err.Error())
+		}
+		volumeID, err = cs.config.AllocVdev(volumeSize)
+		if err != nil {
+			klog.Errorf("Failed to Allocate Vdev after Relogin with error : %v", err)
+			return nil, status.Error(codes.ResourceExhausted, err.Error())
+		}
 	}
 
 	klog.Infof("Created volume %s of size %d bytes on NISD %s", volumeID, volumeSize)
