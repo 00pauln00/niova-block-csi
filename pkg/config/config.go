@@ -23,6 +23,9 @@ func NewConfigManager(cpConfigPath string) *ConfigManager {
 }
 
 func (cm *ConfigManager) LoadCpClient(c *cpClient.CliCFuncs) error {
+	if c == nil {
+		return fmt.Errorf("CP client Cannot be Nil")
+	}
 	cm.Controller.Cpclient = c
 	return nil
 }

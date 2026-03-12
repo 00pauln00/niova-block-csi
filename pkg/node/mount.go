@@ -180,8 +180,9 @@ func (mm *MountManager) CleanupMountPoint(targetPath string) error {
 	}
 
 	// Remove directory if empty
-	if err := os.Remove(targetPath); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(targetPath); err != nil || !os.IsNotExist(err) {
 		klog.Warningf("Failed to remove directory %s: %v", targetPath, err)
+		return fmt.Errorf("Failed to remove the path %s with err %v", targetPath, err)
 	}
 
 	return nil
