@@ -39,6 +39,12 @@ func NewUserClient(raftuuid, raftconfig string) (*userClient.Client, func()) {
 }
 
 func (cm *ConfigManager) LoadCpClient(c *cpClient.CliCFuncs, u *userClient.Client) error {
+	if c == nil {
+		return fmt.Errorf("CP client Cannot be Nil")
+	}
+	if u == nil {
+		return fmt.Errorf("User client Cannot be Nil")
+	}
 	cm.Controller.Cpclient = c
 	cm.Controller.UserClient = u
 	return nil
@@ -96,7 +102,7 @@ func (cm *ConfigManager) AllocVdev(requiredSize int64) (string, error) {
 }
 func (cm *ConfigManager) RemoveVolume(volumeID string) error {
 	/*TODO: Delete the Vdev from CP*/
-	return nil
+	return fmt.Errorf("implement the delete operation of vdev from CP")
 }
 
 func (cm *ConfigManager) GetVolume(volumeID string) (string, error) {

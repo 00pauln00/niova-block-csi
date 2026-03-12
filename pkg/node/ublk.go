@@ -95,22 +95,6 @@ func prepareTargetPath(nisdUUID, nisdIPAddr string, nisdPort int) string {
 	return tPath
 }
 
-func (um *UblkManager) IsUblkDeviceActive(ublkDevicePath string) bool {
-	if _, err := os.Stat(ublkDevicePath); err != nil {
-		return false
-	}
-	return true
-}
-
-func (um *UblkManager) generateUblkID(volumeID string) string {
-	// Generate a shorter ID from volume UUID for ublk device
-	// Take first 8 characters of volume ID
-	if len(volumeID) >= 8 {
-		return volumeID[:8]
-	}
-	return volumeID
-}
-
 func (um *UblkManager) extractUblkID(ublkDevicePath string) string {
 	// Extract ublk ID from device path like /dev/ublk123 -> 123
 	base := filepath.Base(ublkDevicePath)
