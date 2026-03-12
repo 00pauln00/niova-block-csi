@@ -58,7 +58,7 @@ func (cm *ConfigManager) AllocVdev(requiredSize int64) (string, error) {
 }
 func (cm *ConfigManager) RemoveVolume(volumeID string) error {
 	/*TODO: Delete the Vdev from CP*/
-	return nil
+	return fmt.Errorf("implement the delete operation of vdev from CP")
 }
 
 func (cm *ConfigManager) GetVolume(volumeID string) (string, error) {
