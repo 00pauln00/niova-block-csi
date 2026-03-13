@@ -3,11 +3,9 @@ package controller
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/niova-block-csi/pkg/config"
-	"github.com/niova-block-csi/pkg/types"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
@@ -70,39 +68,12 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if cap.GetMount() == nil && cap.GetBlock() == nil {
 		return nil, status.Error(codes.InvalidArgument, "Unsupported volume capability")
 	}
-	volumeMode := types.MOUNT_MODE
-	if cap.GetBlock() != nil {
-		volumeMode = types.BLOCK_MODE
-	}
 	// Allocate Vdev of required size
 	volumeID, err := cs.config.AllocVdev(volumeSize)
 	if err != nil {
 		klog.Errorf("Failed to Allocate Vdev with error : %v", err)
 		return nil, status.Error(codes.ResourceExhausted, err.Error())
 	}
-	klog.Infof("Allocated vdevid is : %s", volumeID)
-	// Create volume structure
-	volume := &types.Volume{
-		VolID:      volumeID,
-		Size:       volumeSize,
-		Status:     types.VolumeStatusCreated,
-		VolumeMode: volumeMode,
-		CreatedAt:  time.Now(),
-	}
-	cs.config.Mutex.Lock()
-	if _, exists := cs.config.Controller.VdevMap[volumeID]; !exists {
-		cs.config.Controller.VdevMap[volumeID] = &types.Vdev{
-			VolMap: make(map[string]*types.Volume),
-		}
-	}
-	// Add volume to config manager
-	if err := cs.config.AddVolumeLocked(volume); err != nil {
-		klog.Errorf("Failed to add volume to config: %v", err)
-		cs.config.Mutex.Unlock()
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create volume: %v", err))
-	}
-
-	cs.config.Mutex.Unlock()
 
 	klog.Infof("Created volume %s of size %d bytes on NISD %s", volumeID, volumeSize)
 
@@ -126,7 +97,7 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	volumeID := req.GetVolumeId()
 
 	// Get volume info
-	volume, err := cs.config.GetVolume(volumeID)
+	_, err := cs.config.GetVolume(volumeID)
 	if err != nil {
 		klog.Warningf("Volume %s not found, considering it already deleted", volumeID)
 		return &csi.DeleteVolumeResponse{}, nil
@@ -138,7 +109,7 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to delete volume: %v", err))
 	}
 
-	klog.Infof("Deleted volume %s of size %d bytes", volumeID, volume.Size)
+	klog.Infof("Deleted the volume %s", volumeID)
 
 	return &csi.DeleteVolumeResponse{}, nil
 }
@@ -159,26 +130,20 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 
 	// Get volume info
 	cs.config.Mutex.Lock()
-	volume, err := cs.config.GetVolume(volumeID)
+	_, err := cs.config.GetVolume(volumeID)
 	if err != nil {
 		klog.Errorf("Volume %s not found: %v", volumeID, err)
 		cs.config.Mutex.Unlock()
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume %s not found", volumeID))
 	}
 
-	// Update volume status to attached
-	if err := cs.config.UpdateVolumeStatus(volumeID, types.VolumeStatusAttached, nodeID); err != nil {
-		klog.Errorf("Failed to update volume status: %v", err)
-		cs.config.Mutex.Unlock()
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to attach volume: %v", err))
-	}
 	cs.config.Mutex.Unlock()
 	klog.Infof("Published volume %s to node %s", volumeID, nodeID)
 
 	return &csi.ControllerPublishVolumeResponse{
 		PublishContext: map[string]string{
-			"volumeID":   volume.VolID,
-			"volumeSize": fmt.Sprintf("%d", volume.Size),
+			"volumeID": volumeID,
+			//"volumeSize": fmt.Sprintf("%d", volume.Size),
 		},
 	}, nil
 }
@@ -198,13 +163,6 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 		klog.Warningf("Volume %s not found, considering it already detached", volumeID)
 		cs.config.Mutex.Unlock()
 		return &csi.ControllerUnpublishVolumeResponse{}, nil
-	}
-
-	// Update volume status to detached
-	if err := cs.config.UpdateVolumeStatus(volumeID, types.VolumeStatusDetached, ""); err != nil {
-		klog.Errorf("Failed to update volume status: %v", err)
-		cs.config.Mutex.Unlock()
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to detach volume: %v", err))
 	}
 	cs.config.Mutex.Unlock()
 
@@ -226,17 +184,17 @@ func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 
 	// Check if volume exists
 	cs.config.Mutex.Lock()
-	vol, err := cs.config.GetVolume(req.GetVolumeId())
+	_, err := cs.config.GetVolume(req.GetVolumeId())
 	if err != nil {
 		cs.config.Mutex.Unlock()
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume %s not found", req.GetVolumeId()))
 	}
 	cs.config.Mutex.Unlock()
 	for _, cap := range req.GetVolumeCapabilities() {
-		if cap.GetBlock() != nil && vol.VolumeMode == types.BLOCK_MODE {
+		if cap.GetBlock() != nil {
 			return &csi.ValidateVolumeCapabilitiesResponse{}, nil
 		}
-		if cap.GetMount() != nil && vol.VolumeMode == types.MOUNT_MODE {
+		if cap.GetMount() != nil {
 			return &csi.ValidateVolumeCapabilitiesResponse{}, nil
 		}
 	}
@@ -251,27 +209,11 @@ func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 func (cs *ControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
 	klog.Infof("ListVolumes: called with args %+v", req)
 
-	var entries []*csi.ListVolumesResponse_Entry
+	//var entries []*csi.ListVolumesResponse_Entry
 
-	controller := cs.config.GetController()
-	for _, vdev := range controller.VdevMap {
-		for _, volume := range vdev.VolMap {
-			entries = append(entries, &csi.ListVolumesResponse_Entry{
-				Volume: &csi.Volume{
-					VolumeId:      volume.VolID,
-					CapacityBytes: volume.Size,
-					VolumeContext: map[string]string{
-						"status":   string(volume.Status),
-						"nodeName": volume.NodeName,
-					},
-				},
-			})
-		}
-	}
+	/*TODO: Get the list of vdevs from CP*/
 
-	return &csi.ListVolumesResponse{
-		Entries: entries,
-	}, nil
+	return &csi.ListVolumesResponse{}, nil
 }
 
 func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
