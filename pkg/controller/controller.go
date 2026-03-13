@@ -71,10 +71,9 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	// Allocate Vdev of required size
 	volumeID, err := cs.config.AllocVdev(volumeSize)
 	if err != nil {
-		err = cs.config.VerifyTokenExpiryAndReLogin(err)
-		if err != nil {
-			klog.Errorf("Failed to ReLogin with error : %v", err)
-			return nil, status.Error(codes.ResourceExhausted, err.Error())
+		if relogErr := cs.config.VerifyTokenExpiryAndReLogin(err); relogErr != nil {
+			klog.Errorf("Failed to ReLogin with error : %v", relogErr)
+			return nil, status.Error(codes.ResourceExhausted, relogErr.Error())
 		}
 		volumeID, err = cs.config.AllocVdev(volumeSize)
 		if err != nil {
@@ -105,7 +104,7 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	volumeID := req.GetVolumeId()
 
 	// Get volume info
-	_, err := cs.config.GetVolume(volumeID)
+	Vol, err := cs.config.GetVolume(volumeID)
 	if err != nil {
 		klog.Warningf("Volume %s not found, considering it already deleted", volumeID)
 		return &csi.DeleteVolumeResponse{}, nil
@@ -117,7 +116,7 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to delete volume: %v", err))
 	}
 
-	klog.Infof("Deleted the volume %s", volumeID)
+	klog.Infof("Deleted the volume %s with size", volumeID, Vol.Size)
 
 	return &csi.DeleteVolumeResponse{}, nil
 }
@@ -138,7 +137,7 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 
 	// Get volume info
 	cs.config.Mutex.Lock()
-	_, err := cs.config.GetVolume(volumeID)
+	Vol, err := cs.config.GetVolume(volumeID)
 	if err != nil {
 		klog.Errorf("Volume %s not found: %v", volumeID, err)
 		cs.config.Mutex.Unlock()
@@ -150,8 +149,8 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 
 	return &csi.ControllerPublishVolumeResponse{
 		PublishContext: map[string]string{
-			"volumeID": volumeID,
-			//"volumeSize": fmt.Sprintf("%d", volume.Size),
+			"volumeID":   volumeID,
+			"volumeSize": fmt.Sprintf("%d", Vol.Size),
 		},
 	}, nil
 }
@@ -166,7 +165,7 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 	volumeID := req.GetVolumeId()
 	cs.config.Mutex.Lock()
 	// Check if volume exists
-	_, err := cs.config.GetVolume(volumeID)
+	Vol, err := cs.config.GetVolume(volumeID)
 	if err != nil {
 		klog.Warningf("Volume %s not found, considering it already detached", volumeID)
 		cs.config.Mutex.Unlock()
@@ -174,7 +173,7 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 	}
 	cs.config.Mutex.Unlock()
 
-	klog.Infof("Unpublished volume %s", volumeID)
+	klog.Infof("Unpublished volume %s with size", volumeID, Vol.Size)
 
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }

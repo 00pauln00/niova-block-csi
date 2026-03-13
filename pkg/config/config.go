@@ -105,7 +105,22 @@ func (cm *ConfigManager) RemoveVolume(volumeID string) error {
 	return fmt.Errorf("implement the delete operation of vdev from CP")
 }
 
-func (cm *ConfigManager) GetVolume(volumeID string) (string, error) {
-	/*TODO: Get the Volume configuration from CP*/
-	return "", fmt.Errorf("Need to get details from CP")
+func (cm *ConfigManager) GetVolume(volumeID string) (ctlplfl.VdevCfg, error) {
+	vdevreq := &ctlplfl.GetReq{
+		ID:        volumeID,
+		UserToken: cm.Controller.Usertoken,
+	}
+	vdevcfg, err := cm.Controller.Cpclient.GetVdevCfg(vdevreq)
+	if err == nil {
+		return vdevcfg, nil
+	}
+	if exp := cm.VerifyTokenExpiryAndReLogin(err); exp != nil {
+		return ctlplfl.VdevCfg{}, fmt.Errorf("Failed to relogin with error %v", err)
+	}
+	vdevreq.UserToken = cm.Controller.Usertoken
+	vdevcfg, err = cm.Controller.Cpclient.GetVdevCfg(vdevreq)
+	if err != nil {
+		return ctlplfl.VdevCfg{}, fmt.Errorf("Failed to get vdev config after relogin with error %v", err)
+	}
+	return vdevcfg, nil
 }
