@@ -105,8 +105,7 @@ func (mm *MountManager) BindRawBlock(sourcePath, targetPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to find target path %s: %v", targetPath, err)
 	}
-	klog.Infof("targetPath is : %s", targetPath)
-	klog.Infof("targetPath isDir=%v mode=%v", info.IsDir(), info.Mode())
+	klog.Infof("targetPath is %s, isDir=%v mode=%v", targetPath, info.IsDir(), info.Mode())
 	// Check if already mounted
 	mounted, err := mm.mounter.IsMountPoint(targetPath)
 	if err != nil {
