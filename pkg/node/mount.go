@@ -100,14 +100,34 @@ func (mm *MountManager) FormatAndMountDevice(devicePath, targetPath, requestedFs
 	return nil
 }
 
+func (mm *MountManager) BindRawBlock(sourcePath, targetPath string) error {
+	info, err := os.Stat(targetPath)
+	if err != nil {
+		return fmt.Errorf("failed to find target path %s: %v", targetPath, err)
+	}
+	klog.Infof("targetPath isDir=%v mode=%v", info.IsDir(), info.Mode())
+	// Check if already mounted
+	mounted, err := mm.mounter.IsMountPoint(targetPath)
+	if err != nil {
+		return fmt.Errorf("failed to check if target is mounted: %v", err)
+	}
+	if mounted {
+		klog.Infof("Path %s is already mounted at %s", sourcePath, targetPath)
+		return nil
+	}
+	// Perform bind mount
+	if err = mm.mounter.Mount(sourcePath, targetPath, "", []string{"bind"}); err != nil {
+		return fmt.Errorf("failed to bind mount %s to %s: %v", sourcePath, targetPath, err)
+	}
+	return nil
+}
+
 func (mm *MountManager) BindMount(sourcePath, targetPath string) error {
 	klog.Infof("Bind mounting %s to %s", sourcePath, targetPath)
-
 	// Create target directory if it doesn't exist
 	if err := os.MkdirAll(targetPath, 0755); err != nil {
 		return fmt.Errorf("failed to create target directory %s: %v", targetPath, err)
 	}
-
 	// Check if already mounted
 	mounted, err := mm.mounter.IsMountPoint(targetPath)
 	if err != nil {
@@ -160,8 +180,9 @@ func (mm *MountManager) CleanupMountPoint(targetPath string) error {
 	}
 
 	// Remove directory if empty
-	if err := os.Remove(targetPath); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(targetPath); err != nil || !os.IsNotExist(err) {
 		klog.Warningf("Failed to remove directory %s: %v", targetPath, err)
+		return fmt.Errorf("Failed to remove the path %s with err %v", targetPath, err)
 	}
 
 	return nil

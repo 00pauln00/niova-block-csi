@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 
@@ -61,9 +62,14 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	if req.GetStagingTargetPath() == "" {
 		return nil, status.Error(codes.InvalidArgument, "Staging target path cannot be empty")
 	}
-
 	if req.GetVolumeCapability() == nil {
-		return nil, status.Error(codes.InvalidArgument, "Volume capability cannot be empty")
+		return nil, status.Error(codes.InvalidArgument, "Volume capabilities cannot be empty")
+	}
+	cap := req.GetVolumeCapability()
+	isBlock := cap.GetBlock() != nil
+	mode := types.MOUNT_MODE
+	if isBlock {
+		mode = types.BLOCK_MODE
 	}
 
 	volumeID := req.GetVolumeId()
@@ -77,43 +83,44 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 
 	ns.mutex.Lock()
 	defer ns.mutex.Unlock()
-
+	var volUUID uuid.UUID
 	// Create ublk device
 	ublkDevicePath, ublkpid, err := ns.ublkManager.CreateUblkDevice(volumeID, volumeSizeStr)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create ublk device: %v", err))
 	}
-
-	// Determine filesystem type from volume capability
-	fsType := "ext4" // default
-	if req.GetVolumeCapability().GetMount() != nil {
-		if req.GetVolumeCapability().GetMount().GetFsType() != "" {
-			fsType = req.GetVolumeCapability().GetMount().GetFsType()
+	if mode == types.MOUNT_MODE {
+		// Determine filesystem type from volume capability
+		// TODO: Get File system type from yml
+		fsType := "ext4" // default
+		if req.GetVolumeCapability().GetMount() != nil {
+			if req.GetVolumeCapability().GetMount().GetFsType() != "" {
+				fsType = req.GetVolumeCapability().GetMount().GetFsType()
+			}
+		}
+		// Format and mount the ublk device to staging path
+		if err := ns.mountManager.FormatAndMountDevice(ublkDevicePath, stagingPath, fsType); err != nil {
+			// Cleanup ublk device on failure
+			ns.ublkManager.DeleteUblkDevice(volumeID, ublkDevicePath, ublkpid)
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to mount device: %v", err))
 		}
 	}
 
-	// Format and mount the ublk device to staging path
-	if err := ns.mountManager.FormatAndMountDevice(ublkDevicePath, stagingPath, fsType); err != nil {
-		// Cleanup ublk device on failure
-		ns.ublkManager.DeleteUblkDevice(volumeID, ublkDevicePath, ublkpid)
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to mount device: %v", err))
-	}
-
 	// Parse volume ID to UUID
-	volUUID, err := uuid.Parse(volumeID)
+	volUUID, err = uuid.Parse(volumeID)
 	if err != nil {
 		klog.Errorf("Failed to parse volume ID %s: %v", volumeID, err)
 		ns.ublkManager.DeleteUblkDevice(volumeID, ublkDevicePath, ublkpid)
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid volume ID format: %v", err))
 	}
-
 	// Create or update node volume entry
 	nodeVolume := &types.NodeVolume{
-		VolID: volUUID,
+		VolID:       volUUID,
 		NodeInfo:    ns.nodeID,
 		UblkPath:    ublkDevicePath,
 		UblkPid:     ublkpid,
 		Status:      types.VolumeStatusAttached,
+		VolumeMode:  mode,
 		StagingPath: stagingPath,
 	}
 
@@ -147,8 +154,10 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	}
 
 	// Unmount from staging path
-	if err := ns.mountManager.Unmount(stagingPath); err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to unmount staging path: %v", err))
+	if nodeVol.VolumeMode == types.MOUNT_MODE {
+		if err := ns.mountManager.Unmount(stagingPath); err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to unmount staging path: %v", err))
+		}
 	}
 
 	// Delete ublk device if it exists
@@ -199,8 +208,19 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	// Check if volume capability is block or filesystem
 	if req.GetVolumeCapability().GetBlock() != nil {
+		// Ensure parent dir exists
+		if err := os.MkdirAll(filepath.Dir(targetPath), 0750); err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+
+		// Create target file
+		f, err := os.OpenFile(targetPath, os.O_CREATE, 0600)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		f.Close()
 		// Block volume - bind mount the ublk device directly
-		if err := ns.mountManager.BindMount(nodeVol.UblkPath, targetPath); err != nil {
+		if err := ns.mountManager.BindRawBlock(nodeVol.UblkPath, targetPath); err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to bind mount block device: %v", err))
 		}
 	} else {
@@ -246,8 +266,12 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	}
 
 	// Clean up target path
-	if err := ns.mountManager.CleanupMountPoint(targetPath); err != nil {
-		klog.Warningf("Failed to cleanup target path %s: %v", targetPath, err)
+	if nodeVol.VolumeMode == types.BLOCK_MODE {
+		_ = os.Remove(targetPath)
+	} else {
+		if err := ns.mountManager.CleanupMountPoint(targetPath); err != nil {
+			klog.Warningf("Failed to cleanup target path %s: %v", targetPath, err)
+		}
 	}
 
 	// Clear target path from node volume
@@ -267,7 +291,11 @@ func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 	if req.GetVolumePath() == "" {
 		return nil, status.Error(codes.InvalidArgument, "Volume path cannot be empty")
 	}
-
+	if nodeVol, ok := ns.node.VolMap[req.GetVolumeId()]; ok {
+		if nodeVol.VolumeMode == types.BLOCK_MODE {
+			return nil, status.Error(codes.Unimplemented, "Block volume stats not supported")
+		}
+	}
 	volumePath := req.GetVolumePath()
 
 	// Check if path exists

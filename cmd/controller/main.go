@@ -15,12 +15,12 @@ import (
 )
 
 var (
-	endpoint = flag.String("endpoint", "unix:///var/lib/kubelet/plugins/niova-block-csi/csi.sock", "CSI endpoint")
-	raftID   = flag.String("r", "", "pass the raft uuid")
-	nodeID   = flag.String("node-id", "", "Node ID")
-	ConfigPath         = flag.String("configpath", "./gossipNodes", "Path to gossip configuration file")
-	driverName         = flag.String("driver-name", "niova-block-csi", "Name of the CSI driver")
-	version            = flag.String("version", "v1.0.0", "Version of the CSI driver")
+	endpoint   = flag.String("endpoint", "unix:///var/lib/kubelet/plugins/niova-block-csi/csi.sock", "CSI endpoint")
+	raftID     = flag.String("r", "", "pass the raft uuid")
+	nodeID     = flag.String("node-id", "", "Node ID")
+	ConfigPath = flag.String("configpath", "./gossipNodes", "Path to gossip configuration file")
+	driverName = flag.String("driver-name", "niova-block-csi", "Name of the CSI driver")
+	version    = flag.String("version", "v1.0.0", "Version of the CSI driver")
 )
 
 func main() {

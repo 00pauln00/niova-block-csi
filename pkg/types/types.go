@@ -1,15 +1,18 @@
 package types
 
 import (
+	"time"
+
 	cpClient "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/client"
 	"github.com/google/uuid"
-	"time"
 )
 
 type VolumeStatus string
 
 const (
 	SrcCP                             = "control-plane"
+	BLOCK_MODE                        = "block"
+	MOUNT_MODE                        = "mount"
 	VolumeStatusCreated  VolumeStatus = "created"
 	VolumeStatusAttached VolumeStatus = "attached"
 	VolumeStatusDetached VolumeStatus = "detached"
@@ -26,6 +29,7 @@ type Volume struct {
 	Path       string       `yaml:"volumePath" json:"volumePath"`
 	NodeName   string       `yaml:"nodeName" json:"nodeName"`
 	Status     VolumeStatus `yaml:"status" json:"status"`
+	VolumeMode string       `yaml:"volumeMode" json:"volumeMode"`
 	CreatedAt  time.Time    `yaml:"createdAt" json:"createdAt"`
 	AttachedAt *time.Time   `yaml:"attachedAt,omitempty" json:"attachedAt,omitempty"`
 }
@@ -41,6 +45,7 @@ type NodeVolume struct {
 	UblkPath    string       `yaml:"ublkPath" json:"ublkPath"`
 	UblkPid     int          `yaml:"ublkPid" json:"ublkPid"`
 	Status      VolumeStatus `yaml:"status" json:"status"`
+	VolumeMode  string       `yaml:"volumeMode" json:"volumeMode"`
 	StagingPath string       `yaml:"stagingPath" json:"stagingPath"`
 	TargetPath  string       `yaml:"targetPath" json:"targetPath"`
 }
@@ -52,4 +57,3 @@ type Node struct {
 type VolumeTrackingFile struct {
 	Volumes []*Volume `yaml:"volumes" json:"volumes"`
 }
-

@@ -1,4 +1,3 @@
-
 package config
 
 import (
@@ -13,14 +12,14 @@ import (
 )
 
 type ConfigManager struct {
-	CpConfigPath     string
-	Controller         *types.Controller
-	Mutex              sync.RWMutex
+	CpConfigPath string
+	Controller   *types.Controller
+	Mutex        sync.RWMutex
 }
 
 func NewConfigManager(cpConfigPath string) *ConfigManager {
 	return &ConfigManager{
-		CpConfigPath:     cpConfigPath,
+		CpConfigPath: cpConfigPath,
 		Controller: &types.Controller{
 			VdevMap: make(map[string]*types.Vdev),
 		},
@@ -28,11 +27,13 @@ func NewConfigManager(cpConfigPath string) *ConfigManager {
 }
 
 func (cm *ConfigManager) LoadCpClient(c *cpClient.CliCFuncs) error {
+	if c == nil {
+		return fmt.Errorf("CP client Cannot be Nil")
+	}
 	cm.Controller.VdevMap = make(map[string]*types.Vdev)
 	cm.Controller.Cpclient = c
 	return nil
 }
-
 
 func (cm *ConfigManager) GetController() *types.Controller {
 	cm.Mutex.Lock()
@@ -44,14 +45,14 @@ func (cm *ConfigManager) AllocVdev(requiredSize int64) (string, error) {
 	cm.Mutex.RLock()
 	defer cm.Mutex.RUnlock()
 	// TODO: NumReplica should be passed from PVC file.
-	Vdev := ctlplfl.Vdev{
-		Cfg: ctlplfl.VdevCfg {
-			Size: requiredSize,
+	Vdev := &ctlplfl.VdevReq{
+		Vdev: &ctlplfl.VdevCfg{
+			Size:       requiredSize,
 			NumReplica: 1,
 		},
 	}
-	klog.Infof("Create vdev of size", Vdev.Cfg.Size)
-	resp, err := cm.Controller.Cpclient.CreateVdev(&Vdev)
+	klog.Infof("Create vdev of size", Vdev.Vdev.Size)
+	resp, err := cm.Controller.Cpclient.CreateVdev(Vdev)
 	if err != nil {
 		klog.Infof("nisd is not allocated", err)
 		return "", fmt.Errorf("failed to get nisd %w", err)
@@ -61,7 +62,6 @@ func (cm *ConfigManager) AllocVdev(requiredSize int64) (string, error) {
 	return resp.ID, nil
 }
 
-
 func (cm *ConfigManager) AddVolumeLocked(volume *types.Volume) error {
 	vdev, exists := cm.Controller.VdevMap[volume.VolID]
 	if !exists {
@@ -70,7 +70,6 @@ func (cm *ConfigManager) AddVolumeLocked(volume *types.Volume) error {
 	vdev.VolMap[volume.VolID] = volume
 	return nil
 }
-
 
 func (cm *ConfigManager) RemoveVolume(volumeID string) error {
 
@@ -114,4 +113,3 @@ func (cm *ConfigManager) UpdateVolumeStatus(volumeID string, status types.Volume
 	}
 	return fmt.Errorf("volume %s not found", volumeID)
 }
-
