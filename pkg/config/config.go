@@ -24,6 +24,7 @@ type ConfigManager struct {
 func NewConfigManager(cpConfigPath string) *ConfigManager {
 	return &ConfigManager{
 		CpConfigPath: cpConfigPath,
+		Controller:   &types.Controller{},
 	}
 }
 
@@ -39,11 +40,17 @@ func NewUserClient(raftuuid, raftconfig string) (*userClient.Client, func()) {
 }
 
 func (cm *ConfigManager) LoadCpClient(c *cpClient.CliCFuncs, u *userClient.Client) error {
+	if cm == nil {
+		return fmt.Errorf("ConfigManager is nil")
+	}
 	if c == nil {
 		return fmt.Errorf("CP client Cannot be Nil")
 	}
 	if u == nil {
 		return fmt.Errorf("User client Cannot be Nil")
+	}
+	if cm.Controller == nil {
+		cm.Controller = &types.Controller{}
 	}
 	cm.Controller.Cpclient = c
 	cm.Controller.UserClient = u

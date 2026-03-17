@@ -50,6 +50,8 @@ func main() {
 		klog.Fatalf("Failed to initialize user client")
 	}
 	defer td()
+	klog.Infof("configManager: %+v", configManager)
+	klog.Infof("controller: %+v", configManager.Controller)
 	if err := configManager.LoadCpClient(c, u); err != nil {
 		klog.Errorf("Failed to load CP configuration: %v", err)
 		os.Exit(-1)
