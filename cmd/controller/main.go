@@ -45,11 +45,21 @@ func main() {
 	configManager := config.NewConfigManager(*ConfigPath)
 
 	c := cpClient.InitCliCFuncs(uuid.New().String(), *raftID, *ConfigPath)
-	if err := configManager.LoadCpClient(c); err != nil {
+	u, td := config.NewUserClient(*raftID, *ConfigPath)
+	if u == nil {
+		klog.Fatalf("Failed to initialize user client")
+	}
+	defer td()
+	if err := configManager.LoadCpClient(c, u); err != nil {
 		klog.Errorf("Failed to load CP configuration: %v", err)
 		os.Exit(-1)
 	}
 	klog.Infof("connection with control plane is sucessful %v", c)
+
+	err := configManager.UserLogin()
+	if err != nil {
+		klog.Fatalf("Failed to Login admin user", err)
+	}
 
 	// Create CSI driver
 	csiDriver := driver.NewCSIDriver(*driverName, *version, *nodeID, *endpoint, configManager)

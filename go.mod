@@ -11,6 +11,7 @@ replace github.com/00pauln00/niova-pumicedb/go => ./niova-mdsvc/modules/niova-pu
 require (
 	github.com/00pauln00/niova-mdsvc v0.0.0-20250828071051-291fb9f7747f
 	github.com/container-storage-interface/spec v1.8.0
+	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	google.golang.org/grpc v1.58.0
 	k8s.io/klog/v2 v2.100.1

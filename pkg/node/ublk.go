@@ -54,13 +54,15 @@ func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string) (string, in
 		fmt.Sprintf("LD_LIBRARY_PATH=%s", ldLibraryPath),
 		fmt.Sprintf("NIOVA_GOSSIP_PATH=%s", os.Getenv("NIOVA_GOSSIP_PATH")),
 		fmt.Sprintf("NIOVA_GOSSIP_KEY=%s", os.Getenv("NIOVA_GOSSIP_KEY")),
+		fmt.Sprintf("NIOVA_BLOCK_CP_AUTH_USERNAME=%s", os.Getenv("NIOVA_BLOCK_CP_AUTH_USERNAME")),
+		fmt.Sprintf("NIOVA_BLOCK_CP_AUTH_SECRET=%s", os.Getenv("NIOVA_BLOCK_CP_AUTH_SECRET")),
 	)
 	cmd.Dir = workingDir
 	if err := cmd.Start(); err != nil {
 		return "", -1, status.Errorf(codes.Internal, "failed to start ublk: %v", err)
 	}
 
-	klog.Infof("ENV variables gossipPath: %s and raftuuid: %s ", os.Getenv("NIOVA_GOSSIP_PATH"), os.Getenv("NIOVA_GOSSIP_KEY"))
+	klog.Infof("ENV variables gossipPath: %s and raftuuid: %s, username: %s and secret: %s ", os.Getenv("NIOVA_GOSSIP_PATH"), os.Getenv("NIOVA_GOSSIP_KEY"), os.Getenv("NIOVA_BLOCK_CP_AUTH_USERNAME"), os.Getenv("NIOVA_BLOCK_CP_AUTH_SECRET"))
 	klog.Infof("Executing command: %s", cmd.String())
 
 	ublkDevicePath, err := waitForDevice(beforeublkDevices)
