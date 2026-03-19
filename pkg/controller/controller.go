@@ -111,12 +111,13 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	}
 
 	// Remove volume from config
-	if err := cs.config.RemoveVolume(volumeID); err != nil {
-		klog.Errorf("Failed to remove volume from config: %v", err)
+	vid, err := cs.config.RemoveVolume(volumeID)
+	if err != nil {
+		klog.Errorf("Failed to remove volume from cp: %v", err)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to delete volume: %v", err))
 	}
 
-	klog.Infof("Deleted the volume %s with size", volumeID, Vol.Size)
+	klog.Infof("Deleted the volume %s with size", vid, Vol.Size)
 
 	return &csi.DeleteVolumeResponse{}, nil
 }
@@ -216,11 +217,25 @@ func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 func (cs *ControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
 	klog.Infof("ListVolumes: called with args %+v", req)
 
-	//var entries []*csi.ListVolumesResponse_Entry
+	var entries []*csi.ListVolumesResponse_Entry
 
-	/*TODO: Get the list of vdevs from CP*/
-
-	return &csi.ListVolumesResponse{}, nil
+	vols, err := cs.config.ListVolumes()
+	if err != nil {
+		klog.Errorf("Failed to get volumes list from cp: %v", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to list volumes: %v", err))
+	}
+	for _, v := range vols {
+		entry := &csi.ListVolumesResponse_Entry{
+			Volume: &csi.Volume{
+				VolumeId:      v.ID,
+				CapacityBytes: int64(v.Size),
+			},
+		}
+		entries = append(entries, entry)
+	}
+	return &csi.ListVolumesResponse{
+		Entries: entries,
+	}, nil
 }
 
 func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {

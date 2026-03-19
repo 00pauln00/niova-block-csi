@@ -91,7 +91,6 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 	if mode == types.MOUNT_MODE {
 		// Determine filesystem type from volume capability
-		// TODO: Get File system type from yml
 		fsType := "ext4" // default
 		if req.GetVolumeCapability().GetMount() != nil {
 			if req.GetVolumeCapability().GetMount().GetFsType() != "" {

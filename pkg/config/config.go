@@ -107,9 +107,25 @@ func (cm *ConfigManager) AllocVdev(requiredSize int64) (string, error) {
 
 	return resp.ID, nil
 }
-func (cm *ConfigManager) RemoveVolume(volumeID string) error {
-	/*TODO: Delete the Vdev from CP*/
-	return fmt.Errorf("implement the delete operation of vdev from CP")
+func (cm *ConfigManager) RemoveVolume(volumeID string) (string, error) {
+	Req := &ctlplfl.DeleteVdevReq{
+		ID:        volumeID,
+		UserToken: cm.Controller.Usertoken,
+	}
+	klog.Infof("Delete vdev of size", volumeID)
+	resp, err := cm.Controller.Cpclient.DeleteVdev(Req)
+	if err == nil {
+		return resp.ID, nil
+	}
+	if exp := cm.VerifyTokenExpiryAndReLogin(err); exp != nil {
+		return "", fmt.Errorf("Failed to relogin with error %v", err)
+	}
+	Req.UserToken = cm.Controller.Usertoken
+	resp, err = cm.Controller.Cpclient.DeleteVdev(Req)
+	if err != nil {
+		return "", fmt.Errorf("Failed to Delete Vdev after relogin with error %v", err)
+	}
+	return resp.ID, nil
 }
 
 func (cm *ConfigManager) GetVolume(volumeID string) (ctlplfl.VdevCfg, error) {
@@ -130,4 +146,24 @@ func (cm *ConfigManager) GetVolume(volumeID string) (ctlplfl.VdevCfg, error) {
 		return ctlplfl.VdevCfg{}, fmt.Errorf("Failed to get vdev config after relogin with error %v", err)
 	}
 	return vdevcfg, nil
+}
+
+func (cm *ConfigManager) ListVolumes() ([]ctlplfl.VdevCfg, error) {
+	Req := &ctlplfl.GetReq{
+		GetAll:    true,
+		UserToken: cm.Controller.Usertoken,
+	}
+	vdevcfgs, err := cm.Controller.Cpclient.GetVdevCfgs(Req)
+	if err == nil {
+		return vdevcfgs, nil
+	}
+	if exp := cm.VerifyTokenExpiryAndReLogin(err); exp != nil {
+		return []ctlplfl.VdevCfg{}, fmt.Errorf("Failed to relogin with error %v", err)
+	}
+	Req.UserToken = cm.Controller.Usertoken
+	vdevcfgs, err = cm.Controller.Cpclient.GetVdevCfgs(Req)
+	if err != nil {
+		return []ctlplfl.VdevCfg{}, fmt.Errorf("Failed to get vdev configs after relogin with error %v", err)
+	}
+	return vdevcfgs, nil
 }
