@@ -116,10 +116,8 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	// Create or update node volume entry
 	nodeVolume := &types.NodeVolume{
 		VolID:       volUUID,
-		NodeInfo:    ns.nodeID,
 		UblkPath:    ublkDevicePath,
 		UblkPid:     ublkpid,
-		Status:      types.VolumeStatusAttached,
 		VolumeMode:  mode,
 		StagingPath: stagingPath,
 	}
