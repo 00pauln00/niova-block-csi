@@ -2,6 +2,7 @@ package types
 
 import (
 	cpClient "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/client"
+	userClient "github.com/00pauln00/niova-mdsvc/controlplane/user/client"
 	"github.com/google/uuid"
 )
 
@@ -15,10 +16,13 @@ const (
 	VolumeStatusAttached VolumeStatus = "attached"
 	VolumeStatusDetached VolumeStatus = "detached"
 	VolumeStatusDeleted  VolumeStatus = "deleted"
+	MAX_RETRY						  = 2
 )
 
 type Controller struct {
-	Cpclient *cpClient.CliCFuncs
+	Cpclient   *cpClient.CliCFuncs
+	UserClient *userClient.Client
+	Usertoken  string
 }
 
 type NodeVolume struct {
