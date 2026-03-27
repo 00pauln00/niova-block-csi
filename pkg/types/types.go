@@ -16,6 +16,7 @@ const (
 	VolumeStatusAttached VolumeStatus = "attached"
 	VolumeStatusDetached VolumeStatus = "detached"
 	VolumeStatusDeleted  VolumeStatus = "deleted"
+	MAX_RETRY						  = 2
 )
 
 type Controller struct {
