@@ -64,6 +64,7 @@ func (cm *ConfigManager) UserLogin() error {
 		return err
 	}
 	cm.Controller.Usertoken = token.AccessToken
+	cm.Controller.Cpclient.SetToken(token.AccessToken)
 	return nil
 }
 
@@ -95,7 +96,6 @@ func (cm *ConfigManager) AllocVdev(requiredSize int64) (string, error) {
 			Size:       requiredSize,
 			NumReplica: 1,
 		},
-		UserToken: cm.Controller.Usertoken,
 	}
 	klog.Infof("Create vdev of size", Vdev.Vdev.Size)
 	for i := 0; i < types.MAX_RETRY; i++ {  // max 1 retry
@@ -108,7 +108,6 @@ func (cm *ConfigManager) AllocVdev(requiredSize int64) (string, error) {
 			klog.Errorf("nisd is not allocated", err)
 			return "", fmt.Errorf("failed to relogin with error %w", err)
 		}
-		Vdev.UserToken = cm.Controller.Usertoken
 		continue
 	}
 	return "", fmt.Errorf("Failed to create vdev after retry")
@@ -117,7 +116,6 @@ func (cm *ConfigManager) AllocVdev(requiredSize int64) (string, error) {
 func (cm *ConfigManager) RemoveVolume(volumeID string) (string, error) {
 	Req := &ctlplfl.DeleteVdevReq{
 		ID:        volumeID,
-		UserToken: cm.Controller.Usertoken,
 	}
 	klog.Infof("Delete vdev of size", volumeID)
 	// check if token expired
@@ -130,7 +128,6 @@ func (cm *ConfigManager) RemoveVolume(volumeID string) (string, error) {
 			return "", fmt.Errorf("Failed to relogin with error %v", err)
 		}
 		// update token and retry
-		Req.UserToken = cm.Controller.Usertoken
 		continue
 	}
 	return "", fmt.Errorf("failed to delete vdev after retry")
@@ -139,7 +136,6 @@ func (cm *ConfigManager) RemoveVolume(volumeID string) (string, error) {
 func (cm *ConfigManager) GetVolume(volumeID string) (ctlplfl.VdevCfg, error) {
 	vdevreq := &ctlplfl.GetReq{
 		ID:        volumeID,
-		UserToken: cm.Controller.Usertoken,
 	}
 	for i := 0; i < types.MAX_RETRY; i++ {
 		vdevcfg, err := cm.Controller.Cpclient.GetVdevCfg(vdevreq)
@@ -149,7 +145,6 @@ func (cm *ConfigManager) GetVolume(volumeID string) (ctlplfl.VdevCfg, error) {
 		if exp := cm.VerifyTokenExpiryAndReLogin(err); exp != nil {
 			return ctlplfl.VdevCfg{}, fmt.Errorf("Failed to relogin with error %v", err)
 		}
-		vdevreq.UserToken = cm.Controller.Usertoken
 		continue
 	}
 	return ctlplfl.VdevCfg{}, fmt.Errorf("failed to Get Volume after retry")
@@ -158,7 +153,6 @@ func (cm *ConfigManager) GetVolume(volumeID string) (ctlplfl.VdevCfg, error) {
 func (cm *ConfigManager) ListVolumes() ([]ctlplfl.VdevCfg, error) {
 	Req := &ctlplfl.GetReq{
 		GetAll:    true,
-		UserToken: cm.Controller.Usertoken,
 	}
 	for i := 0; i < types.MAX_RETRY; i++ {
 		vdevcfgs, err := cm.Controller.Cpclient.GetVdevCfgs(Req)
@@ -168,7 +162,6 @@ func (cm *ConfigManager) ListVolumes() ([]ctlplfl.VdevCfg, error) {
 		if exp := cm.VerifyTokenExpiryAndReLogin(err); exp != nil {
 			return []ctlplfl.VdevCfg{}, fmt.Errorf("Failed to relogin with error %v", err)
 		}
-		Req.UserToken = cm.Controller.Usertoken
 		continue
 	}
 	return []ctlplfl.VdevCfg{}, fmt.Errorf("Failed to list volumes after retry")

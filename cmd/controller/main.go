@@ -44,7 +44,7 @@ func main() {
 	// Create config manager
 	configManager := config.NewConfigManager(*ConfigPath)
 
-	c := cpClient.InitCliCFuncs(uuid.New().String(), *raftID, *ConfigPath)
+	c := cpClient.InitCliCFuncs(uuid.New().String(), *raftID, *ConfigPath, "xyz.log")
 	u, td := config.NewUserClient(*raftID, *ConfigPath)
 	if u == nil {
 		klog.Fatalf("Failed to initialize user client")
