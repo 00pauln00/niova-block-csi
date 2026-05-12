@@ -13,12 +13,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/niova-block-csi/pkg/types"
 	"k8s.io/klog/v2"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
 type ConfigManager struct {
 	CpConfigPath string
 	Controller   *types.Controller
 	Mutex        sync.RWMutex
+	K8sClient    *kubernetes.Clientset
 }
 
 func NewConfigManager(cpConfigPath string) *ConfigManager {
@@ -26,6 +29,22 @@ func NewConfigManager(cpConfigPath string) *ConfigManager {
 		CpConfigPath: cpConfigPath,
 		Controller:   &types.Controller{},
 	}
+}
+
+func NewNiovaController() (*kubernetes.Clientset, error) {
+    // Use in-cluster config — works automatically when running inside Kubernetes
+    config, err := rest.InClusterConfig()
+    if err != nil {
+        return nil, fmt.Errorf("failed to load in-cluster config: %v", err)
+    }
+
+    // Create the clientset
+    clientset, err := kubernetes.NewForConfig(config)
+    if err != nil {
+        return nil, fmt.Errorf("failed to create Kubernetes clientset: %v", err)
+    }
+
+    return clientset, nil
 }
 
 func NewUserClient(raftuuid, raftconfig string) (*userClient.Client, func()) {
@@ -58,13 +77,17 @@ func (cm *ConfigManager) LoadCpClient(c *cpClient.CliCFuncs, u *userClient.Clien
 }
 
 func (cm *ConfigManager) UserLogin() error {
+	klog.Infof("Loging in the user with env variables %s and %s", os.Getenv("NIOVA_BLOCK_CP_AUTH_USERNAME"), os.Getenv("NIOVA_BLOCK_CP_AUTH_SECRET"))
 	token, err := cm.Controller.UserClient.Login(os.Getenv("NIOVA_BLOCK_CP_AUTH_USERNAME"), os.Getenv("NIOVA_BLOCK_CP_AUTH_SECRET"))
+	klog.Infof("returned values are: %v and %v", token, err)
 	if err != nil {
 		klog.Errorf("Failed to Login admin user", err)
 		return err
 	}
+	klog.Infof("userlogin done")
 	cm.Controller.Usertoken = token.AccessToken
 	cm.Controller.Cpclient.SetToken(token.AccessToken)
+	klog.Infof("login token is set")
 	return nil
 }
 
@@ -87,17 +110,43 @@ func (cm *ConfigManager) GetController() *types.Controller {
 	return cm.Controller
 }
 
-func (cm *ConfigManager) AllocVdev(requiredSize int64) (string, error) {
+func toFD(v int) (ctlplfl.FD, error) {
+    fd := ctlplfl.FD(v)
+
+    switch fd {
+    case ctlplfl.FD_ANY,
+        ctlplfl.FD_PDU,
+        ctlplfl.FD_RACK,
+        ctlplfl.FD_HV,
+        ctlplfl.FD_DEVICE,
+        ctlplfl.FD_PARTITION:
+        return fd, nil
+    default:
+        return ctlplfl.FD_ANY, fmt.Errorf("invalid ctlplfl.FD value: %d", v)
+    }
+}
+
+func (cm *ConfigManager) AllocVdev(requiredSize int64, filter int, entityID string) (string, error) {
 	cm.Mutex.RLock()
 	defer cm.Mutex.RUnlock()
+	fd, err := toFD(filter)
+	if err != nil {
+		return "", err
+	}
+	klog.Infof("fd filters are %d and %s", filter, entityID)
 	// TODO: NumReplica should be passed from PVC file.
 	Vdev := &ctlplfl.VdevReq{
 		Vdev: &ctlplfl.VdevCfg{
 			Size:       requiredSize,
 			NumReplica: 1,
 		},
+		Filter: ctlplfl.Filter{
+			ID: entityID,
+                        Type: fd,
+                },
 	}
 	klog.Infof("Create vdev of size", Vdev.Vdev.Size)
+	klog.Infof("vdevreq is %v", Vdev)
 	for i := 0; i < types.MAX_RETRY; i++ {  // max 1 retry
 		resp, err := cm.Controller.Cpclient.CreateVdev(Vdev)
 		if err == nil {

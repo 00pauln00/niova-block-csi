@@ -3,12 +3,14 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/niova-block-csi/pkg/config"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type ControllerServer struct {
@@ -68,8 +70,31 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if cap.GetMount() == nil && cap.GetBlock() == nil {
 		return nil, status.Error(codes.InvalidArgument, "Unsupported volume capability")
 	}
+	pvcName := req.GetParameters()["pvcName"]
+	pvcNamespace := "default"
+	var filter int
+	var entityId string
+	klog.Infof("Resolved PVC Name: %s, Namespace: %s", pvcName, pvcNamespace)
+	if pvcName != "" {
+		targetPVC, err := cs.config.K8sClient.CoreV1().PersistentVolumeClaims(pvcNamespace).Get(ctx, pvcName, metav1.GetOptions{})
+        	if err != nil {
+	            klog.Infof("Error in getting PVC %s: %v", pvcName, err)
+        	    return nil, fmt.Errorf("failed to get PVC %s: %v", pvcName, err)
+	        }
+
+        	klog.Infof("getting the annotations from k8's")
+		fd := targetPVC.Annotations["niova.com/fd"]
+		filter, err = strconv.Atoi(fd)
+		if err != nil {
+		    return nil, fmt.Errorf("invalid fd annotation: %v", err)
+		}
+		entityId = targetPVC.Annotations["niova.com/EntityId"]
+		klog.Infof("provided Annotations is %d and %s", filter, entityId)
+	} else {
+		 klog.Infof("No PVC name provided in parameters — proceeding with FD=nil")
+	}
 	// Allocate Vdev of required size
-	volumeID, err := cs.config.AllocVdev(volumeSize)
+	volumeID, err := cs.config.AllocVdev(volumeSize, filter, entityId)
 	if err != nil {
 		klog.Errorf("Failed to Allocate Vdev with error : %v", err)
 		return nil, status.Error(codes.ResourceExhausted, err.Error())

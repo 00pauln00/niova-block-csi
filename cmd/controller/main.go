@@ -43,6 +43,12 @@ func main() {
 
 	// Create config manager
 	configManager := config.NewConfigManager(*ConfigPath)
+	k8sClient, err := config.NewNiovaController()
+	if err != nil {
+		klog.Fatalf("failed to load k8's client %v ", err)
+	}
+
+	configManager.K8sClient = k8sClient
 
 	c := cpClient.InitCliCFuncs(uuid.New().String(), *raftID, *ConfigPath, "xyz.log")
 	u, td := config.NewUserClient(*raftID, *ConfigPath)
@@ -56,11 +62,12 @@ func main() {
 	}
 	klog.Infof("connection with control plane is sucessful %v", c)
 
-	err := configManager.UserLogin()
+	err = configManager.UserLogin()
 	if err != nil {
+		klog.Infof("admin login failed")
 		klog.Fatalf("Failed to Login admin user", err)
 	}
-
+	klog.Infof("login to control plane is sucessful")
 	// Create CSI driver
 	csiDriver := driver.NewCSIDriver(*driverName, *version, *nodeID, *endpoint, configManager)
 
