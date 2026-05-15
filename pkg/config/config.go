@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"strings"
 
 	cpClient "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/client"
 	ctlplfl "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/lib"
@@ -92,7 +93,7 @@ func (cm *ConfigManager) UserLogin() error {
 }
 
 func (cm *ConfigManager) VerifyTokenExpiryAndReLogin(exp error) error {
-	if errors.Is(exp, jwt.ErrTokenExpired) {
+	if errors.Is(exp, jwt.ErrTokenExpired) || strings.Contains(exp.Error(), "token is expired"){
 		err := cm.UserLogin()
 		if err != nil {
 			return err
@@ -110,29 +111,26 @@ func (cm *ConfigManager) GetController() *types.Controller {
 	return cm.Controller
 }
 
-func toFD(v int) (ctlplfl.FD, error) {
-    fd := ctlplfl.FD(v)
-
-    switch fd {
-    case ctlplfl.FD_ANY,
-        ctlplfl.FD_PDU,
-        ctlplfl.FD_RACK,
-        ctlplfl.FD_HV,
-        ctlplfl.FD_DEVICE,
-        ctlplfl.FD_PARTITION:
-        return fd, nil
+func parseFDType(s string) ctlplfl.FD {
+    switch strings.ToLower(strings.TrimSpace(s)) {
+    case "pdu":
+        return ctlplfl.FD_PDU
+    case "rack":
+        return ctlplfl.FD_RACK
+    case "hv", "hypervisor":
+        return ctlplfl.FD_HV
+    case "device":
+        return ctlplfl.FD_DEVICE
+    case "partition":
+        return ctlplfl.FD_PARTITION
     default:
-        return ctlplfl.FD_ANY, fmt.Errorf("invalid ctlplfl.FD value: %d", v)
+        return ctlplfl.FD_ANY
     }
 }
 
-func (cm *ConfigManager) AllocVdev(requiredSize int64, filter int, entityID string) (string, error) {
+func (cm *ConfigManager) AllocVdev(requiredSize int64, filter, entityID string) (string, error) {
 	cm.Mutex.RLock()
 	defer cm.Mutex.RUnlock()
-	fd, err := toFD(filter)
-	if err != nil {
-		return "", err
-	}
 	klog.Infof("fd filters are %d and %s", filter, entityID)
 	// TODO: NumReplica should be passed from PVC file.
 	Vdev := &ctlplfl.VdevReq{
@@ -142,7 +140,7 @@ func (cm *ConfigManager) AllocVdev(requiredSize int64, filter int, entityID stri
 		},
 		Filter: ctlplfl.Filter{
 			ID: entityID,
-                        Type: fd,
+                        Type: parseFDType(filter),
                 },
 	}
 	klog.Infof("Create vdev of size", Vdev.Vdev.Size)

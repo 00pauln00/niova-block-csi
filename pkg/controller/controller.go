@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"strconv"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/niova-block-csi/pkg/config"
@@ -72,7 +71,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 	pvcName := req.GetParameters()["pvcName"]
 	pvcNamespace := "default"
-	var filter int
+	var filter string
 	var entityId string
 	klog.Infof("Resolved PVC Name: %s, Namespace: %s", pvcName, pvcNamespace)
 	if pvcName != "" {
@@ -83,11 +82,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	        }
 
         	klog.Infof("getting the annotations from k8's")
-		fd := targetPVC.Annotations["niova.com/fd"]
-		filter, err = strconv.Atoi(fd)
-		if err != nil {
-		    return nil, fmt.Errorf("invalid fd annotation: %v", err)
-		}
+		filter = targetPVC.Annotations["niova.com/failuredomain"]
 		entityId = targetPVC.Annotations["niova.com/EntityId"]
 		klog.Infof("provided Annotations is %d and %s", filter, entityId)
 	} else {
