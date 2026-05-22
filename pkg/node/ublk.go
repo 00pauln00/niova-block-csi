@@ -77,7 +77,7 @@ func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string) (string, in
 func (um *UblkManager) DeleteUblkDevice(volumeID, ublkDevicePath string, ublkPid int) error {
 	klog.Infof("Deleting ublk device %s for volume %s", ublkDevicePath, volumeID)
 
-	err := killByNameIfExists(ublkPid)
+	err := killByNameIfExists(ublkPid, ublkDevicePath)
 	if err != nil {
 		return fmt.Errorf("failed to delete ublk device: %v", err)
 	}
@@ -194,7 +194,7 @@ func lsblkDevices() ([]string, error) {
 	return devices, nil
 }
 
-func killByNameIfExists(pid int) error {
+func killByNameIfExists(pid int, ublkDevicePath string) error {
 	// Step 1: Check if the process exists and is accessible
 	err := syscall.Kill(pid, 0)
 	if err != nil {
@@ -212,11 +212,17 @@ func killByNameIfExists(pid int) error {
 
 	// Step 2: Kill the process
 	klog.Infof("Killing process with PID %d...", pid)
-	killCmd := exec.Command("kill", "-9", strconv.Itoa(pid))
+	killCmd := exec.Command("kill", "-15", strconv.Itoa(pid))
 	if err := killCmd.Run(); err != nil {
 		return fmt.Errorf("failed to kill process %d: %v", pid, err)
 	}
-
+	klog.Infof("Deleteing the ublk %s", ublkDevicePath)
+	base := filepath.Base(ublkDevicePath)
+	id := strings.TrimPrefix(base, "ublkb")
+	dublk := exec.Command("ublk", "del", "-n", id)
+	if err := dublk.Run(); err != nil {
+		return fmt.Errorf("failed to delete ublk %s: %v", ublkDevicePath, err)
+	}
 	klog.Infof("Successfully killed process %d.", pid)
 	return nil
 }
