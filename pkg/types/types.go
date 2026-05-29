@@ -16,7 +16,15 @@ const (
 	VolumeStatusAttached VolumeStatus = "attached"
 	VolumeStatusDetached VolumeStatus = "detached"
 	VolumeStatusDeleted  VolumeStatus = "deleted"
-	MAX_RETRY						  = 2
+
+	NiovaUserName   = "NIOVA_BLOCK_CP_AUTH_USERNAME"
+	NiovaUserSecret = "NIOVA_BLOCK_CP_AUTH_SECRET"
+	NiovaGossipKey  = "NIOVA_GOSSIP_KEY"
+	NiovaGossipPath = "NIOVA_GOSSIP_PATH"
+
+	FailureDomain = "niova.com/failuredomain"
+	EntityID      = "niova.com/EntityId"
+	MAX_RETRY     = 2
 )
 
 type Controller struct {

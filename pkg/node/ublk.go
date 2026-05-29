@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/niova-block-csi/pkg/types"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
@@ -52,17 +53,17 @@ func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string) (string, in
 	)
 	cmd.Env = append(cmd.Env,
 		fmt.Sprintf("LD_LIBRARY_PATH=%s", ldLibraryPath),
-		fmt.Sprintf("NIOVA_GOSSIP_PATH=%s", os.Getenv("NIOVA_GOSSIP_PATH")),
-		fmt.Sprintf("NIOVA_GOSSIP_KEY=%s", os.Getenv("NIOVA_GOSSIP_KEY")),
-		fmt.Sprintf("NIOVA_BLOCK_CP_AUTH_USERNAME=%s", os.Getenv("NIOVA_BLOCK_CP_AUTH_USERNAME")),
-		fmt.Sprintf("NIOVA_BLOCK_CP_AUTH_SECRET=%s", os.Getenv("NIOVA_BLOCK_CP_AUTH_SECRET")),
+		fmt.Sprintf("NIOVA_GOSSIP_PATH=%s", os.Getenv(types.NiovaGossipPath)),
+		fmt.Sprintf("NIOVA_GOSSIP_KEY=%s", os.Getenv(types.NiovaGossipKey)),
+		fmt.Sprintf("NIOVA_BLOCK_CP_AUTH_USERNAME=%s", os.Getenv(types.NiovaUserName)),
+		fmt.Sprintf("NIOVA_BLOCK_CP_AUTH_SECRET=%s", os.Getenv(types.NiovaUserSecret)),
 	)
 	cmd.Dir = workingDir
 	if err := cmd.Start(); err != nil {
 		return "", -1, status.Errorf(codes.Internal, "failed to start ublk: %v", err)
 	}
 
-	klog.Infof("ENV variables gossipPath: %s and raftuuid: %s, username: %s and secret: %s ", os.Getenv("NIOVA_GOSSIP_PATH"), os.Getenv("NIOVA_GOSSIP_KEY"), os.Getenv("NIOVA_BLOCK_CP_AUTH_USERNAME"), os.Getenv("NIOVA_BLOCK_CP_AUTH_SECRET"))
+	klog.Infof("ENV variables %s: %s and %s: %s, %s: %s and %s: %s ", types.NiovaGossipPath, os.Getenv(types.NiovaGossipPath), types.NiovaGossipKey, os.Getenv(types.NiovaGossipKey), types.NiovaUserName, os.Getenv(types.NiovaUserName), types.NiovaUserSecret, os.Getenv(types.NiovaUserSecret))
 	klog.Infof("Executing command: %s", cmd.String())
 
 	ublkDevicePath, err := waitForDevice(beforeublkDevices)

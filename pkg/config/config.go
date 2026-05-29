@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"sync"
 	"strings"
+	"sync"
 
 	cpClient "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/client"
 	ctlplfl "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/lib"
@@ -13,9 +13,9 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/niova-block-csi/pkg/types"
-	"k8s.io/klog/v2"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/klog/v2"
 )
 
 type ConfigManager struct {
@@ -32,23 +32,23 @@ func NewConfigManager(cpConfigPath string) *ConfigManager {
 	}
 }
 
-func NewNiovaController() (*kubernetes.Clientset, error) {
-    // Use in-cluster config — works automatically when running inside Kubernetes
-    config, err := rest.InClusterConfig()
-    if err != nil {
-        return nil, fmt.Errorf("failed to load in-cluster config: %v", err)
-    }
+func NewK8sController() (*kubernetes.Clientset, error) {
+	// Use in-cluster config — works automatically when running inside Kubernetes
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load in-cluster config: %v", err)
+	}
 
-    // Create the clientset
-    clientset, err := kubernetes.NewForConfig(config)
-    if err != nil {
-        return nil, fmt.Errorf("failed to create Kubernetes clientset: %v", err)
-    }
+	// Create the clientset
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Kubernetes clientset: %v", err)
+	}
 
-    return clientset, nil
+	return clientset, nil
 }
 
-func NewUserClient(raftuuid, raftconfig string) (*userClient.Client, func()) {
+func StartAuthClient(raftuuid, raftconfig string) (*userClient.Client, func()) {
 	cfg := userClient.Config{
 		AppUUID:          uuid.New().String(),
 		RaftUUID:         raftuuid,
@@ -59,7 +59,7 @@ func NewUserClient(raftuuid, raftconfig string) (*userClient.Client, func()) {
 	return c, tearDown
 }
 
-func (cm *ConfigManager) LoadCpClient(c *cpClient.CliCFuncs, u *userClient.Client) error {
+func (cm *ConfigManager) InitNiovaClient(c *cpClient.CliCFuncs, u *userClient.Client) error {
 	if cm == nil {
 		return fmt.Errorf("ConfigManager is nil")
 	}
@@ -78,22 +78,20 @@ func (cm *ConfigManager) LoadCpClient(c *cpClient.CliCFuncs, u *userClient.Clien
 }
 
 func (cm *ConfigManager) UserLogin() error {
-	klog.Infof("Loging in the user with env variables %s and %s", os.Getenv("NIOVA_BLOCK_CP_AUTH_USERNAME"), os.Getenv("NIOVA_BLOCK_CP_AUTH_SECRET"))
-	token, err := cm.Controller.UserClient.Login(os.Getenv("NIOVA_BLOCK_CP_AUTH_USERNAME"), os.Getenv("NIOVA_BLOCK_CP_AUTH_SECRET"))
-	klog.Infof("returned values are: %v and %v", token, err)
+	klog.Infof("Loging in the user with env-var %s  value %s is applied from environment", types.NiovaUserName, os.Getenv(types.NiovaUserName))
+	klog.Infof("Loging in the user with env-var %s value %s is applied from environment", types.NiovaUserSecret, os.Getenv(types.NiovaUserSecret))
+	token, err := cm.Controller.UserClient.Login(os.Getenv(types.NiovaUserName), os.Getenv(types.NiovaUserSecret))
 	if err != nil {
 		klog.Errorf("Failed to Login admin user", err)
 		return err
 	}
-	klog.Infof("userlogin done")
 	cm.Controller.Usertoken = token.AccessToken
 	cm.Controller.Cpclient.SetToken(token.AccessToken)
-	klog.Infof("login token is set")
 	return nil
 }
 
 func (cm *ConfigManager) VerifyTokenExpiryAndReLogin(exp error) error {
-	if errors.Is(exp, jwt.ErrTokenExpired) || strings.Contains(exp.Error(), "token is expired"){
+	if errors.Is(exp, jwt.ErrTokenExpired) || strings.Contains(exp.Error(), "token is expired") {
 		err := cm.UserLogin()
 		if err != nil {
 			return err
@@ -112,26 +110,41 @@ func (cm *ConfigManager) GetController() *types.Controller {
 }
 
 func parseFDType(s string) ctlplfl.FD {
-    switch strings.ToLower(strings.TrimSpace(s)) {
-    case "pdu":
-        return ctlplfl.FD_PDU
-    case "rack":
-        return ctlplfl.FD_RACK
-    case "hv", "hypervisor":
-        return ctlplfl.FD_HV
-    case "device":
-        return ctlplfl.FD_DEVICE
-    case "partition":
-        return ctlplfl.FD_PARTITION
-    default:
-        return ctlplfl.FD_ANY
-    }
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "pdu":
+		return ctlplfl.FD_PDU
+	case "rack":
+		return ctlplfl.FD_RACK
+	case "hv", "hypervisor":
+		return ctlplfl.FD_HV
+	case "device":
+		return ctlplfl.FD_DEVICE
+	case "partition":
+		return ctlplfl.FD_PARTITION
+	default:
+		return ctlplfl.FD_ANY
+	}
+}
+
+func (cm *ConfigManager) RetryAuth(fn func() error) error {
+	for i := 0; i < types.MAX_RETRY; i++ {
+		err := fn()
+		if err == nil {
+			return nil
+		}
+
+		if exp := cm.VerifyTokenExpiryAndReLogin(err); exp != nil {
+			return fmt.Errorf("failed to relogin: %w", err)
+		}
+	}
+
+	return fmt.Errorf("operation failed after %d retries", types.MAX_RETRY)
 }
 
 func (cm *ConfigManager) AllocVdev(requiredSize int64, filter, entityID string) (string, error) {
 	cm.Mutex.RLock()
 	defer cm.Mutex.RUnlock()
-	klog.Infof("fd filters are %d and %s", filter, entityID)
+	klog.Infof("Allocate vdev with failure domain: %s", entityID)
 	// TODO: NumReplica should be passed from PVC file.
 	Vdev := &ctlplfl.VdevReq{
 		Vdev: &ctlplfl.VdevCfg{
@@ -139,77 +152,73 @@ func (cm *ConfigManager) AllocVdev(requiredSize int64, filter, entityID string) 
 			NumReplica: 1,
 		},
 		Filter: ctlplfl.Filter{
-			ID: entityID,
-                        Type: parseFDType(filter),
-                },
+			ID:   entityID,
+			Type: parseFDType(filter),
+		},
 	}
 	klog.Infof("Create vdev of size", Vdev.Vdev.Size)
-	klog.Infof("vdevreq is %v", Vdev)
-	for i := 0; i < types.MAX_RETRY; i++ {  // max 1 retry
-		resp, err := cm.Controller.Cpclient.CreateVdev(Vdev)
-		if err == nil {
-			klog.Infof("Created Vdev of UUID :%+v", resp.ID)
-			return resp.ID, nil
-		}
-		if exp := cm.VerifyTokenExpiryAndReLogin(err); exp != nil {
-			klog.Errorf("nisd is not allocated", err)
-			return "", fmt.Errorf("failed to relogin with error %w", err)
-		}
-		continue
+	var resp *ctlplfl.ResponseXML
+	err := cm.RetryAuth(func() error {
+		var err error
+		resp, err = cm.Controller.Cpclient.CreateVdev(Vdev)
+		return err
+	})
+
+	if err != nil {
+		return "", err
 	}
-	return "", fmt.Errorf("Failed to create vdev after retry")
+
+	return resp.ID, nil
 }
 
 func (cm *ConfigManager) RemoveVolume(volumeID string) (string, error) {
 	Req := &ctlplfl.DeleteVdevReq{
-		ID:        volumeID,
+		ID: volumeID,
 	}
-	klog.Infof("Delete vdev of size", volumeID)
+	klog.Infof("Delete Vdev ID:", volumeID)
 	// check if token expired
-	for i := 0; i < types.MAX_RETRY; i++ {  // max 1 retry
-		resp, err := cm.Controller.Cpclient.DeleteVdev(Req)
-		if err == nil {
-			return resp.ID, nil
-		}
-		if exp := cm.VerifyTokenExpiryAndReLogin(err); exp != nil {
-			return "", fmt.Errorf("Failed to relogin with error %v", err)
-		}
-		// update token and retry
-		continue
+	var resp *ctlplfl.ResponseXML
+	err := cm.RetryAuth(func() error {
+		var err error
+		resp, err = cm.Controller.Cpclient.DeleteVdev(Req)
+		return err
+	})
+
+	if err != nil {
+		return "", err
 	}
-	return "", fmt.Errorf("failed to delete vdev after retry")
+
+	return resp.ID, nil
 }
 
 func (cm *ConfigManager) GetVolume(volumeID string) (ctlplfl.VdevCfg, error) {
 	vdevreq := &ctlplfl.GetReq{
-		ID:        volumeID,
+		ID: volumeID,
 	}
-	for i := 0; i < types.MAX_RETRY; i++ {
-		vdevcfg, err := cm.Controller.Cpclient.GetVdevCfg(vdevreq)
-		if err == nil {
-			return vdevcfg, nil
-		}
-		if exp := cm.VerifyTokenExpiryAndReLogin(err); exp != nil {
-			return ctlplfl.VdevCfg{}, fmt.Errorf("Failed to relogin with error %v", err)
-		}
-		continue
+	var vdevcfg ctlplfl.VdevCfg
+	err := cm.RetryAuth(func() error {
+		var err error
+		vdevcfg, err = cm.Controller.Cpclient.GetVdevCfg(vdevreq)
+		return err
+	})
+	if err != nil {
+		return ctlplfl.VdevCfg{}, err
 	}
-	return ctlplfl.VdevCfg{}, fmt.Errorf("failed to Get Volume after retry")
+	return vdevcfg, nil
 }
 
 func (cm *ConfigManager) ListVolumes() ([]ctlplfl.VdevCfg, error) {
 	Req := &ctlplfl.GetReq{
-		GetAll:    true,
+		GetAll: true,
 	}
-	for i := 0; i < types.MAX_RETRY; i++ {
-		vdevcfgs, err := cm.Controller.Cpclient.GetVdevCfgs(Req)
-		if err == nil {
-			return vdevcfgs, nil
-		}
-		if exp := cm.VerifyTokenExpiryAndReLogin(err); exp != nil {
-			return []ctlplfl.VdevCfg{}, fmt.Errorf("Failed to relogin with error %v", err)
-		}
-		continue
+	var vdevcfgs []ctlplfl.VdevCfg
+	err := cm.RetryAuth(func() error {
+		var err error
+		vdevcfgs, err = cm.Controller.Cpclient.GetVdevCfgs(Req)
+		return err
+	})
+	if err != nil {
+		return []ctlplfl.VdevCfg{}, err
 	}
-	return []ctlplfl.VdevCfg{}, fmt.Errorf("Failed to list volumes after retry")
+	return vdevcfgs, nil
 }
