@@ -74,6 +74,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	pvcNamespace := "default"
 	var filter string
 	var entityId string
+	var pfsId string
 	klog.Infof("Resolved PVC Name: %s, Namespace: %s", pvcName, pvcNamespace)
 	if pvcName != "" {
 		targetPVC, err := cs.config.K8sClient.CoreV1().PersistentVolumeClaims(pvcNamespace).Get(ctx, pvcName, metav1.GetOptions{})
@@ -85,12 +86,13 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		klog.Infof("getting the annotations from k8's")
 		filter = targetPVC.Annotations[types.FailureDomain]
 		entityId = targetPVC.Annotations[types.EntityID]
-		klog.Infof("provided Annotations is %d and %s", filter, entityId)
+		pfsId = targetPVC.Annotations[types.PfsID]
+		klog.Infof("provided Annotations is filter=%s, entityid=%s, pfsId=%s", filter, entityId, pfsId)
 	} else {
 		klog.Infof("No PVC name provided in parameters — proceeding with FD=nil")
 	}
 	// Allocate Vdev of required size
-	volumeID, err := cs.config.AllocVdev(volumeSize, filter, entityId)
+	volumeID, err := cs.config.AllocVdev(volumeSize, filter, entityId, pfsId)
 	if err != nil {
 		klog.Errorf("Failed to Allocate Vdev with error : %v", err)
 		return nil, status.Error(codes.ResourceExhausted, err.Error())

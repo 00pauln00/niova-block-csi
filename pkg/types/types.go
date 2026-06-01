@@ -24,6 +24,7 @@ const (
 
 	FailureDomain = "niova.com/failuredomain"
 	EntityID      = "niova.com/EntityId"
+	PfsID         = "niova.com/PfsID"
 	MAX_RETRY     = 2
 )
 
