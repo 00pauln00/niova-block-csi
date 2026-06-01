@@ -32,7 +32,9 @@ COPY usr/local/lib/ /usr/local/lib
 
 COPY usr/local/include/ /usr/local/include
 
-COPY usr/local/libexec/ /usr/local/libexec
+COPY usr/local/sbin/ /usr/local/sbin
+
+COPY usr/local/share/ /usr/local/share
 
 RUN chmod +x /opt/niova/niova-block-csi-${BINARY}
 

@@ -30,8 +30,8 @@ CONTROLLER_BINARY = niova-block-csi-controller
 NODE_BINARY = niova-block-csi-node
 
 # Build directories
-BUILD_DIR = /opt/niova
-BIN_DIR = $(BUILD_DIR)/bin
+BUILD_DIR ?= /opt/niova
+BIN_DIR = $(BUILD_DIR)
 
 .PHONY: all build controller node clean help version
 
