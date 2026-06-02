@@ -6,8 +6,10 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/niova-block-csi/pkg/config"
+	"github.com/niova-block-csi/pkg/types"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 )
 
@@ -68,8 +70,27 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if cap.GetMount() == nil && cap.GetBlock() == nil {
 		return nil, status.Error(codes.InvalidArgument, "Unsupported volume capability")
 	}
+	pvcName := req.GetParameters()["pvcName"]
+	pvcNamespace := "default"
+	var filter string
+	var entityId string
+	klog.Infof("Resolved PVC Name: %s, Namespace: %s", pvcName, pvcNamespace)
+	if pvcName != "" {
+		targetPVC, err := cs.config.K8sClient.CoreV1().PersistentVolumeClaims(pvcNamespace).Get(ctx, pvcName, metav1.GetOptions{})
+		if err != nil {
+			klog.Infof("Error in getting PVC %s: %v", pvcName, err)
+			return nil, fmt.Errorf("failed to get PVC %s: %v", pvcName, err)
+		}
+
+		klog.Infof("getting the annotations from k8's")
+		filter = targetPVC.Annotations[types.FailureDomain]
+		entityId = targetPVC.Annotations[types.EntityID]
+		klog.Infof("provided Annotations is %d and %s", filter, entityId)
+	} else {
+		klog.Infof("No PVC name provided in parameters — proceeding with FD=nil")
+	}
 	// Allocate Vdev of required size
-	volumeID, err := cs.config.AllocVdev(volumeSize)
+	volumeID, err := cs.config.AllocVdev(volumeSize, filter, entityId)
 	if err != nil {
 		klog.Errorf("Failed to Allocate Vdev with error : %v", err)
 		return nil, status.Error(codes.ResourceExhausted, err.Error())
@@ -97,19 +118,20 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	volumeID := req.GetVolumeId()
 
 	// Get volume info
-	_, err := cs.config.GetVolume(volumeID)
+	Vol, err := cs.config.GetVolume(volumeID)
 	if err != nil {
 		klog.Warningf("Volume %s not found, considering it already deleted", volumeID)
 		return &csi.DeleteVolumeResponse{}, nil
 	}
 
 	// Remove volume from config
-	if err := cs.config.RemoveVolume(volumeID); err != nil {
-		klog.Errorf("Failed to remove volume from config: %v", err)
+	vid, err := cs.config.RemoveVolume(volumeID)
+	if err != nil {
+		klog.Errorf("Failed to remove volume from cp: %v", err)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to delete volume: %v", err))
 	}
 
-	klog.Infof("Deleted the volume %s", volumeID)
+	klog.Infof("Deleted the volume %s with size", vid, Vol.Size)
 
 	return &csi.DeleteVolumeResponse{}, nil
 }
@@ -130,7 +152,7 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 
 	// Get volume info
 	cs.config.Mutex.Lock()
-	_, err := cs.config.GetVolume(volumeID)
+	Vol, err := cs.config.GetVolume(volumeID)
 	if err != nil {
 		klog.Errorf("Volume %s not found: %v", volumeID, err)
 		cs.config.Mutex.Unlock()
@@ -142,8 +164,8 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 
 	return &csi.ControllerPublishVolumeResponse{
 		PublishContext: map[string]string{
-			"volumeID": volumeID,
-			//"volumeSize": fmt.Sprintf("%d", volume.Size),
+			"volumeID":   volumeID,
+			"volumeSize": fmt.Sprintf("%d", Vol.Size),
 		},
 	}, nil
 }
@@ -158,7 +180,7 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 	volumeID := req.GetVolumeId()
 	cs.config.Mutex.Lock()
 	// Check if volume exists
-	_, err := cs.config.GetVolume(volumeID)
+	Vol, err := cs.config.GetVolume(volumeID)
 	if err != nil {
 		klog.Warningf("Volume %s not found, considering it already detached", volumeID)
 		cs.config.Mutex.Unlock()
@@ -166,7 +188,7 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 	}
 	cs.config.Mutex.Unlock()
 
-	klog.Infof("Unpublished volume %s", volumeID)
+	klog.Infof("Unpublished volume %s with size", volumeID, Vol.Size)
 
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }
@@ -209,11 +231,25 @@ func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 func (cs *ControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
 	klog.Infof("ListVolumes: called with args %+v", req)
 
-	//var entries []*csi.ListVolumesResponse_Entry
+	var entries []*csi.ListVolumesResponse_Entry
 
-	/*TODO: Get the list of vdevs from CP*/
-
-	return &csi.ListVolumesResponse{}, nil
+	vols, err := cs.config.ListVolumes()
+	if err != nil {
+		klog.Errorf("Failed to get volumes list from cp: %v", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to list volumes: %v", err))
+	}
+	for _, v := range vols {
+		entry := &csi.ListVolumesResponse_Entry{
+			Volume: &csi.Volume{
+				VolumeId:      v.ID,
+				CapacityBytes: int64(v.Size),
+			},
+		}
+		entries = append(entries, entry)
+	}
+	return &csi.ListVolumesResponse{
+		Entries: entries,
+	}, nil
 }
 
 func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {

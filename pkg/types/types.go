@@ -2,6 +2,7 @@ package types
 
 import (
 	cpClient "github.com/00pauln00/niova-mdsvc/controlplane/ctlplanefuncs/client"
+	userClient "github.com/00pauln00/niova-mdsvc/controlplane/user/client"
 	"github.com/google/uuid"
 )
 
@@ -15,10 +16,21 @@ const (
 	VolumeStatusAttached VolumeStatus = "attached"
 	VolumeStatusDetached VolumeStatus = "detached"
 	VolumeStatusDeleted  VolumeStatus = "deleted"
+
+	NiovaUserName   = "NIOVA_BLOCK_CP_AUTH_USERNAME"
+	NiovaUserSecret = "NIOVA_BLOCK_CP_AUTH_SECRET"
+	NiovaGossipKey  = "NIOVA_GOSSIP_KEY"
+	NiovaGossipPath = "NIOVA_GOSSIP_PATH"
+
+	FailureDomain = "niova.com/failuredomain"
+	EntityID      = "niova.com/EntityId"
+	MAX_RETRY     = 2
 )
 
 type Controller struct {
-	Cpclient *cpClient.CliCFuncs
+	Cpclient   *cpClient.CliCFuncs
+	UserClient *userClient.Client
+	Usertoken  string
 }
 
 type NodeVolume struct {

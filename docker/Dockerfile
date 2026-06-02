@@ -22,9 +22,9 @@ RUN mkdir -p /csi /var/niova /etc/niova /opt/niova /usr/local/bin /usr/local/lib
 
 ARG BINARY=controller
 
-COPY opt/niova/niova-block-csi-controller /opt/niova/niova-block-csi-controller
+COPY bin/niova-block-csi-controller /opt/niova/niova-block-csi-controller
 
-COPY opt/niova/niova-block-csi-node /opt/niova/niova-block-csi-node
+COPY bin/niova-block-csi-node /opt/niova/niova-block-csi-node
 
 COPY usr/local/bin /usr/local/bin
 
@@ -32,7 +32,9 @@ COPY usr/local/lib/ /usr/local/lib
 
 COPY usr/local/include/ /usr/local/include
 
-COPY usr/local/libexec/ /usr/local/libexec
+COPY usr/local/sbin/ /usr/local/sbin
+
+COPY usr/local/share/ /usr/local/share
 
 RUN chmod +x /opt/niova/niova-block-csi-${BINARY}
 

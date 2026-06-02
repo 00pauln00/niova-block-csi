@@ -81,24 +81,31 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid volume size: %v", err))
 	}
 
-	ns.mutex.Lock()
-	defer ns.mutex.Unlock()
-	var volUUID uuid.UUID
-	// Create ublk device
+	// if this volume is already staged, return success.
+	// Only a read lock is needed here since we are not modifying the map.
+	ns.mutex.RLock()
+	_, alreadyStaged := ns.node.VolMap[volumeID]
+	ns.mutex.RUnlock()
+	if alreadyStaged {
+		klog.Infof("NodeStageVolume: volume %s is already staged, returning success", volumeID)
+		return &csi.NodeStageVolumeResponse{}, nil
+	}
+
 	ublkDevicePath, ublkpid, err := ns.ublkManager.CreateUblkDevice(volumeID, volumeSizeStr)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create ublk device: %v", err))
 	}
+
 	if mode == types.MOUNT_MODE {
 		// Determine filesystem type from volume capability
-		// TODO: Get File system type from yml
 		fsType := "ext4" // default
 		if req.GetVolumeCapability().GetMount() != nil {
 			if req.GetVolumeCapability().GetMount().GetFsType() != "" {
 				fsType = req.GetVolumeCapability().GetMount().GetFsType()
 			}
 		}
-		// Format and mount the ublk device to staging path
+		// Format and mount the ublk device to staging path (runs mkfs + mount —
+		// can take seconds; no shared state, no lock needed).
 		if err := ns.mountManager.FormatAndMountDevice(ublkDevicePath, stagingPath, fsType); err != nil {
 			// Cleanup ublk device on failure
 			ns.ublkManager.DeleteUblkDevice(volumeID, ublkDevicePath, ublkpid)
@@ -107,13 +114,13 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 
 	// Parse volume ID to UUID
-	volUUID, err = uuid.Parse(volumeID)
+	volUUID, err := uuid.Parse(volumeID)
 	if err != nil {
 		klog.Errorf("Failed to parse volume ID %s: %v", volumeID, err)
 		ns.ublkManager.DeleteUblkDevice(volumeID, ublkDevicePath, ublkpid)
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid volume ID format: %v", err))
 	}
-	// Create or update node volume entry
+
 	nodeVolume := &types.NodeVolume{
 		VolID:       volUUID,
 		UblkPath:    ublkDevicePath,
@@ -122,7 +129,11 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		StagingPath: stagingPath,
 	}
 
+	// Write lock: only the map insertion needs exclusive access.
+	// All the expensive work above runs concurrently for different volumes.
+	ns.mutex.Lock()
 	ns.node.VolMap[volumeID] = nodeVolume
+	ns.mutex.Unlock()
 
 	klog.Infof("Successfully staged volume %s with ublk device %s at %s", volumeID, ublkDevicePath, stagingPath)
 	return &csi.NodeStageVolumeResponse{}, nil
@@ -142,10 +153,10 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	volumeID := req.GetVolumeId()
 	stagingPath := req.GetStagingTargetPath()
 
-	ns.mutex.Lock()
-	defer ns.mutex.Unlock()
-
+	ns.mutex.RLock()
 	nodeVol, exists := ns.node.VolMap[volumeID]
+	ns.mutex.RUnlock()
+
 	if !exists {
 		klog.Warningf("Volume %s not found in node map, considering it already unstaged", volumeID)
 		return &csi.NodeUnstageVolumeResponse{}, nil
@@ -170,8 +181,10 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 		klog.Warningf("Failed to cleanup staging path %s: %v", stagingPath, err)
 	}
 
-	// Remove from node map
+	// Write lock: remove the entry from the shared map.
+	ns.mutex.Lock()
 	delete(ns.node.VolMap, volumeID)
+	ns.mutex.Unlock()
 
 	klog.Infof("Successfully unstaged volume %s", volumeID)
 	return &csi.NodeUnstageVolumeResponse{}, nil
@@ -196,15 +209,14 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	targetPath := req.GetTargetPath()
 	stagingPath := req.GetStagingTargetPath()
 
-	ns.mutex.Lock()
-	defer ns.mutex.Unlock()
-
+	ns.mutex.RLock()
 	nodeVol, exists := ns.node.VolMap[volumeID]
+	ns.mutex.RUnlock()
+
 	if !exists {
 		return nil, status.Error(codes.FailedPrecondition, fmt.Sprintf("Volume %s not staged", volumeID))
 	}
 
-	// Check if volume capability is block or filesystem
 	if req.GetVolumeCapability().GetBlock() != nil {
 		// Ensure parent dir exists
 		if err := os.MkdirAll(filepath.Dir(targetPath), 0750); err != nil {
@@ -228,8 +240,10 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		}
 	}
 
-	// Update node volume with target path
+	// Write lock: update the TargetPath field on the shared NodeVolume struct.
+	ns.mutex.Lock()
 	nodeVol.TargetPath = targetPath
+	ns.mutex.Unlock()
 
 	klog.Infof("Successfully published volume %s to %s", volumeID, targetPath)
 	return &csi.NodePublishVolumeResponse{}, nil
@@ -249,21 +263,20 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	volumeID := req.GetVolumeId()
 	targetPath := req.GetTargetPath()
 
-	ns.mutex.Lock()
-	defer ns.mutex.Unlock()
-
+	ns.mutex.RLock()
 	nodeVol, exists := ns.node.VolMap[volumeID]
+	ns.mutex.RUnlock()
+
 	if !exists {
 		klog.Warningf("Volume %s not found in node map, considering it already unpublished", volumeID)
 		return &csi.NodeUnpublishVolumeResponse{}, nil
 	}
 
-	// Unmount from target path
+	// --- Filesystem / unmount operations: no lock held ---
 	if err := ns.mountManager.Unmount(targetPath); err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to unmount target path: %v", err))
 	}
 
-	// Clean up target path
 	if nodeVol.VolumeMode == types.BLOCK_MODE {
 		_ = os.Remove(targetPath)
 	} else {
@@ -272,8 +285,10 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		}
 	}
 
-	// Clear target path from node volume
+	// Write lock: clear the TargetPath field on the shared NodeVolume struct.
+	ns.mutex.Lock()
 	nodeVol.TargetPath = ""
+	ns.mutex.Unlock()
 
 	klog.Infof("Successfully unpublished volume %s from %s", volumeID, targetPath)
 	return &csi.NodeUnpublishVolumeResponse{}, nil
@@ -289,11 +304,15 @@ func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 	if req.GetVolumePath() == "" {
 		return nil, status.Error(codes.InvalidArgument, "Volume path cannot be empty")
 	}
-	if nodeVol, ok := ns.node.VolMap[req.GetVolumeId()]; ok {
-		if nodeVol.VolumeMode == types.BLOCK_MODE {
-			return nil, status.Error(codes.Unimplemented, "Block volume stats not supported")
-		}
+
+	ns.mutex.RLock()
+	nodeVol, ok := ns.node.VolMap[req.GetVolumeId()]
+	ns.mutex.RUnlock()
+
+	if ok && nodeVol.VolumeMode == types.BLOCK_MODE {
+		return nil, status.Error(codes.Unimplemented, "Block volume stats not supported")
 	}
+
 	volumePath := req.GetVolumePath()
 
 	// Check if path exists

@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/niova-block-csi/pkg/types"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
@@ -52,15 +53,17 @@ func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string) (string, in
 	)
 	cmd.Env = append(cmd.Env,
 		fmt.Sprintf("LD_LIBRARY_PATH=%s", ldLibraryPath),
-		fmt.Sprintf("NIOVA_GOSSIP_PATH=%s", os.Getenv("NIOVA_GOSSIP_PATH")),
-		fmt.Sprintf("NIOVA_GOSSIP_KEY=%s", os.Getenv("NIOVA_GOSSIP_KEY")),
+		fmt.Sprintf("NIOVA_GOSSIP_PATH=%s", os.Getenv(types.NiovaGossipPath)),
+		fmt.Sprintf("NIOVA_GOSSIP_KEY=%s", os.Getenv(types.NiovaGossipKey)),
+		fmt.Sprintf("NIOVA_BLOCK_CP_AUTH_USERNAME=%s", os.Getenv(types.NiovaUserName)),
+		fmt.Sprintf("NIOVA_BLOCK_CP_AUTH_SECRET=%s", os.Getenv(types.NiovaUserSecret)),
 	)
 	cmd.Dir = workingDir
 	if err := cmd.Start(); err != nil {
 		return "", -1, status.Errorf(codes.Internal, "failed to start ublk: %v", err)
 	}
 
-	klog.Infof("ENV variables gossipPath: %s and raftuuid: %s ", os.Getenv("NIOVA_GOSSIP_PATH"), os.Getenv("NIOVA_GOSSIP_KEY"))
+	klog.Infof("ENV variables %s: %s and %s: %s, %s: %s and %s: %s ", types.NiovaGossipPath, os.Getenv(types.NiovaGossipPath), types.NiovaGossipKey, os.Getenv(types.NiovaGossipKey), types.NiovaUserName, os.Getenv(types.NiovaUserName), types.NiovaUserSecret, os.Getenv(types.NiovaUserSecret))
 	klog.Infof("Executing command: %s", cmd.String())
 
 	ublkDevicePath, err := waitForDevice(beforeublkDevices)
@@ -75,7 +78,7 @@ func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string) (string, in
 func (um *UblkManager) DeleteUblkDevice(volumeID, ublkDevicePath string, ublkPid int) error {
 	klog.Infof("Deleting ublk device %s for volume %s", ublkDevicePath, volumeID)
 
-	err := killByNameIfExists(ublkPid)
+	err := killByNameIfExists(ublkPid, ublkDevicePath)
 	if err != nil {
 		return fmt.Errorf("failed to delete ublk device: %v", err)
 	}
@@ -192,7 +195,7 @@ func lsblkDevices() ([]string, error) {
 	return devices, nil
 }
 
-func killByNameIfExists(pid int) error {
+func killByNameIfExists(pid int, ublkDevicePath string) error {
 	// Step 1: Check if the process exists and is accessible
 	err := syscall.Kill(pid, 0)
 	if err != nil {
@@ -210,11 +213,17 @@ func killByNameIfExists(pid int) error {
 
 	// Step 2: Kill the process
 	klog.Infof("Killing process with PID %d...", pid)
-	killCmd := exec.Command("kill", "-9", strconv.Itoa(pid))
+	killCmd := exec.Command("kill", "-15", strconv.Itoa(pid))
 	if err := killCmd.Run(); err != nil {
 		return fmt.Errorf("failed to kill process %d: %v", pid, err)
 	}
-
+	klog.Infof("Deleteing the ublk %s", ublkDevicePath)
+	base := filepath.Base(ublkDevicePath)
+	id := strings.TrimPrefix(base, "ublkb")
+	dublk := exec.Command("ublk", "del", "-n", id)
+	if err := dublk.Run(); err != nil {
+		return fmt.Errorf("failed to delete ublk %s: %v", ublkDevicePath, err)
+	}
 	klog.Infof("Successfully killed process %d.", pid)
 	return nil
 }

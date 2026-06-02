@@ -58,12 +58,10 @@ kubectl apply -f niova-csi-deployment.yaml
 
 5. Update Binaries
 
-Replace updated binary in opt/niova/.
+Replace updated binary using the included script:
 
-Rebuild with the appropriate BINARY:
-
-docker build --build-arg BINARY=controller -t niova-csi-controller .
-
+cd docker
+./build.sh
 
 Notes:
 

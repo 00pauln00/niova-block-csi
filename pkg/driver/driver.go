@@ -41,17 +41,17 @@ func NewCSIDriver(name, version, nodeID, endpoint string, configManager *config.
 }
 
 func (d *CSIDriver) SetupControllerServer() {
-	klog.Info("Setting up controller server")
+	klog.Infof("Setting up controller server")
 	d.controllerServer = controller.NewControllerServer(d.configManager)
 }
 
 func (d *CSIDriver) SetupNodeServer() {
-	klog.Info("Setting up node server")
+	klog.Infof("Setting up node server")
 	d.nodeServer = node.NewNodeServer(d.nodeID)
 }
 
 func (d *CSIDriver) SetupIdentityServer() {
-	klog.Info("Setting up identity server")
+	klog.Infof("Setting up identity server")
 	d.identityServer = NewIdentityServer(d.name, d.version)
 }
 

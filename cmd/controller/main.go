@@ -21,6 +21,7 @@ var (
 	ConfigPath = flag.String("configpath", "./gossipNodes", "Path to gossip configuration file")
 	driverName = flag.String("driver-name", "niova-block-csi", "Name of the CSI driver")
 	version    = flag.String("version", "v1.0.0", "Version of the CSI driver")
+	Cplog      = flag.String("Cplog", "niova_csi.log", "provide path to cp init client logs")
 )
 
 func main() {
@@ -43,14 +44,31 @@ func main() {
 
 	// Create config manager
 	configManager := config.NewConfigManager(*ConfigPath)
+	k8sClient, err := config.NewK8sController()
+	if err != nil {
+		klog.Fatalf("failed to load k8's client %v ", err)
+	}
 
-	c := cpClient.InitCliCFuncs(uuid.New().String(), *raftID, *ConfigPath)
-	if err := configManager.LoadCpClient(c); err != nil {
+	configManager.K8sClient = k8sClient
+
+	c := cpClient.InitCliCFuncs(uuid.New().String(), *raftID, *ConfigPath, *Cplog)
+	u, teardown := config.StartAuthClient(*raftID, *ConfigPath)
+	if u == nil {
+		klog.Fatalf("Failed to start Authentication client")
+	}
+	// this will stop the Auth client channel when process exited
+	defer teardown()
+	if err := configManager.InitNiovaClient(c, u); err != nil {
 		klog.Errorf("Failed to load CP configuration: %v", err)
 		os.Exit(-1)
 	}
 	klog.Infof("connection with control plane is sucessful %v", c)
 
+	err = configManager.UserLogin()
+	if err != nil {
+		klog.Fatalf("Failed to Login with niova control plane", err)
+	}
+	klog.Infof("login to control plane is sucessful")
 	// Create CSI driver
 	csiDriver := driver.NewCSIDriver(*driverName, *version, *nodeID, *endpoint, configManager)
 
