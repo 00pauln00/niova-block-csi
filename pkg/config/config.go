@@ -141,7 +141,7 @@ func (cm *ConfigManager) RetryAuth(fn func() error) error {
 	return fmt.Errorf("operation failed after %d retries", types.MAX_RETRY)
 }
 
-func (cm *ConfigManager) AllocVdev(requiredSize int64, filter, entityID string) (string, error) {
+func (cm *ConfigManager) AllocVdev(requiredSize int64, filter, entityID, pfsId string) (string, error) {
 	cm.Mutex.RLock()
 	defer cm.Mutex.RUnlock()
 	klog.Infof("Allocate vdev with failure domain: %s", entityID)
@@ -150,6 +150,7 @@ func (cm *ConfigManager) AllocVdev(requiredSize int64, filter, entityID string) 
 		Vdev: &ctlplfl.VdevCfg{
 			Size:       requiredSize,
 			NumReplica: 1,
+			PFSID:      pfsId,
 		},
 		Filter: ctlplfl.Filter{
 			ID:   entityID,
