@@ -2,6 +2,7 @@ name: niova-csi-validation
 
 on:
   workflow_dispatch:
+
   push:
     branches:
       - ci-pipeline
@@ -15,42 +16,42 @@ jobs:
 
     timeout-minutes: 120
 
-  steps:
-  - uses: actions/checkout@v4
+    steps:
+      - uses: actions/checkout@v4
 
-  - name: Run CSI setup
-    run: |
-      chmod +x scripts/csi-setup.sh
+      - name: Run CSI setup
+        run: |
+          chmod +x scripts/csi-setup.sh
 
-      ./scripts/csi-setup.sh \
-        /local/runner/csi-workdir \
-        paro1618/niova-csi \
-        v10
+          ./scripts/csi-setup.sh \
+            /local/runner/csi-workdir \
+            paro1618/niova-csi \
+            v10
 
-  - name: Verify CSI pods
-    run: |
-      kubectl get pods -A
-      kubectl get pvc
-      kubectl get pv
+      - name: Verify CSI pods
+        run: |
+          kubectl get pods -A
+          kubectl get pvc
+          kubectl get pv
 
-  - name: Collect logs
-    if: always()
-    run: |
-      mkdir -p logs
+      - name: Collect logs
+        if: always()
+        run: |
+          mkdir -p logs
 
-      kubectl get pods -A > logs/pods.txt
+          kubectl get pods -A > logs/pods.txt
 
-      kubectl logs deployment/niova-csi > logs/controller.log || true
+          kubectl logs deployment/niova-csi > logs/controller.log || true
 
-      NODE_POD=$(kubectl get pods \
-        -l app=niova-csi-node \
-        -o jsonpath='{.items[0].metadata.name}')
+          NODE_POD=$(kubectl get pods \
+            -l app=niova-csi-node \
+            -o jsonpath='{.items[0].metadata.name}')
 
-      kubectl logs $NODE_POD > logs/node.log || true
+          kubectl logs $NODE_POD > logs/node.log || true
 
-  - name: Upload logs
-    if: always()
-    uses: actions/upload-artifact@v4
-    with:
-      name: csi-logs
-      path: logs
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: csi-logs
+          path: logs
