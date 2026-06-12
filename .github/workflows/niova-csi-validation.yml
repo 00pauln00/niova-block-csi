@@ -1,22 +1,23 @@
 name: niova-csi-validation
 
 on:
-workflow_dispatch:
-push:
-branches:
-- main
+  workflow_dispatch:
+  push:
+    branches:
+      - ci-pipeline
 
 jobs:
-csi-validation:
-runs-on:
-- self-hosted
-- linux
-- ubuntu-24.04
+  csi-validation:
+    runs-on:
+      - self-hosted
+      - linux
+      - ubuntu-24.04
 
-timeout-minutes: 120
+      timeout-minutes: 120
 
 steps:
-  - uses: actions/checkout@v4
+  - name: Checkout
+    uses: actions/checkout@v4
 
   - name: Run CSI setup
     run: |
