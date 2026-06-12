@@ -1,4 +1,4 @@
-#!/bin/bash
+g!/bin/bash
 
 set -euo pipefail
 
@@ -25,7 +25,6 @@ sudo apt-get install -y \
   git \
   curl \
   wget \
-  docker.io \
   conntrack \
   build-essential \
   autoconf \
