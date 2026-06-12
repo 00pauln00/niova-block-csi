@@ -22,7 +22,7 @@ jobs:
           chmod +x scripts/csi-setup.sh
 
           ./scripts/csi-setup.sh \
-            /local/runner/csi-workdir \
+            /home/runner/csi-workdir \
             paro1618/niova-csi \
             v10
 
