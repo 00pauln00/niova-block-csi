@@ -10,8 +10,6 @@ on:
 jobs:
   csi-validation:
     runs-on:
-      - self-hosted
-      - linux
       - ubuntu-24.04
 
     timeout-minutes: 120
