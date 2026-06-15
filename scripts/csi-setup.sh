@@ -78,7 +78,7 @@ echo "====================================="
 
 cd "${WORKDIR}"
 
-git clone git@github.com:niova/niova-mdsvc.git
+git clone https://github.com/niova/niova-mdsvc.git
 
 cd niova-mdsvc
 
@@ -106,8 +106,7 @@ echo "====================================="
 
 cd "${WORKDIR}"
 
-git clone git@github.com:niova/niova-block.git
-[O
+git clone https://github.com/niova/niova-block.git
 
 cd niova-block
 
@@ -134,8 +133,7 @@ echo "Clone niova-block-csi"
 echo "====================================="
 
 cd "${WORKDIR}"
-
-git clone git@github.com:niova/niova-block-csi.git
+git clone https://github.com/niova/niova-block-csi.git
 cd niova-block-csi
 git submodule update --init --recursive
 cd niova-mdsvc
