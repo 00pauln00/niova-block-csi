@@ -68,7 +68,7 @@ echo "====================================="
 minikube start \
   --driver=docker \
   --cpus=4 \
-  --memory=16384
+  --memory=3900mb
 
 kubectl get nodes
 
