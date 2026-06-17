@@ -9,13 +9,29 @@ on:
 
 jobs:
   csi-validation:
-    runs-on:
-      - ubuntu-24.04
+    runs-on: ubuntu-24.04
 
     timeout-minutes: 120
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout niova-block-csi
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Checkout niova-block
+        uses: actions/checkout@v4
+        with:
+          repository: niova/niova-block
+          path: niova-block
+          submodules: recursive
+
+      - name: Verify sources
+        run: |
+          echo "Workspace: $GITHUB_WORKSPACE"
+          ls -la
+          ls -la niova-mdsvc || true
+          ls -la niova-block
 
       - name: Run CSI setup
         run: |
@@ -23,8 +39,17 @@ jobs:
 
           ./scripts/csi-setup.sh \
             /home/runner/csi-workdir \
+            "$GITHUB_WORKSPACE/niova-mdsvc" \
+            "$GITHUB_WORKSPACE/niova-block" \
+            "$GITHUB_WORKSPACE" \
             paro1618/niova-csi \
             v10
+
+      - name: Verify cluster
+        run: |
+          kubectl get nodes
+          kubectl get pods -A
+          minikube status
 
       - name: Verify CSI pods
         run: |

@@ -3,8 +3,11 @@ g!/bin/bash
 set -euo pipefail
 
 WORKDIR=$1
-DOCKER_REPO=$2
-VERSION_TAG=$3
+MDSVC_DIR=$2
+NBLOCK_DIR=$3
+CSI_DIR=$4
+DOCKER_REPO=$5
+VERSION_TAG=$6
 
 CP_BIN=${WORKDIR}/cp-bin
 NB_BIN=${WORKDIR}/nb-bin
@@ -73,16 +76,10 @@ minikube start \
 kubectl get nodes
 
 echo "====================================="
-echo "Clone niova-mdsvc"
+echo "build niova-mdsvc"
 echo "====================================="
 
-cd "${WORKDIR}"
-
-git clone https://github.com/niova/niova-mdsvc.git
-
-cd niova-mdsvc
-
-git submodule update --init --recursive
+cd "$MDSVC_DIR"
 
 cd modules/niova-pumicedb/modules/niova-raft/modules/niova-core
 
@@ -101,17 +98,10 @@ cd ../..
 sudo env PATH=/usr/local/go/bin:$PATH make -e DIR="${CP_BIN}" install_all
 
 echo "====================================="
-echo "Clone niova-block"
+echo "build niova-block"
 echo "====================================="
 
-cd "${WORKDIR}"
-
-git clone https://github.com/niova/niova-block.git
-
-cd niova-block
-
-git submodule update --init
-
+cd "$NBLOCK_DIR"
 cd niova-core
 
 ./prepare.sh && ./configure --prefix="${NB_BIN}" --enable-devel && make clean && make -j$(nproc) && sudo make install
@@ -129,13 +119,10 @@ cd ../..
 ./prepare.sh && ./configure --with-niova="${NB_BIN}" --prefix="${NB_BIN}" && make -j$(nproc) && sudo make install
 
 echo "====================================="
-echo "Clone niova-block-csi"
+echo "build niova-block-csi"
 echo "====================================="
 
-cd "${WORKDIR}"
-git clone https://github.com/niova/niova-block-csi.git
-cd niova-block-csi
-git submodule update --init --recursive
+cd "$CSI_DIR"
 cd niova-mdsvc
 git checkout main
 cd ..
