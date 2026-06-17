@@ -21,14 +21,18 @@ jobs:
 
       - name: Checkout niova-block-csi
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Verify sources
         run: |
           echo "Workspace: $GITHUB_WORKSPACE"
           ls -la
-          ls -la niova-mdsvc || true
+          ls -la niova-mdsvc
+
+      - name: Update Submodules
+        run: |
+          git submodule init
+          git submodule sync --recursive
+          git submodule update --init --recursive
 
       - name: Checkout niova-block
         uses: actions/checkout@v4
