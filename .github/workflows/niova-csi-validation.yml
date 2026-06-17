@@ -14,10 +14,21 @@ jobs:
     timeout-minutes: 120
 
     steps:
+      - name: Verify sources
+        run: |
+          echo "Workspace: $GITHUB_WORKSPACE"
+          ls -la
+
       - name: Checkout niova-block-csi
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Verify sources
+        run: |
+          echo "Workspace: $GITHUB_WORKSPACE"
+          ls -la
+          ls -la niova-mdsvc || true
 
       - name: Checkout niova-block
         uses: actions/checkout@v4
