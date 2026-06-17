@@ -21,6 +21,8 @@ jobs:
 
       - name: Checkout niova-block-csi
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Verify sources
         run: |
