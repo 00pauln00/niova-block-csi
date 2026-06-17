@@ -3,20 +3,16 @@ g!/bin/bash
 set -euo pipefail
 
 WORKDIR=$1
-MDSVC_DIR=$2
-CSI_DIR=$3
-DOCKER_REPO=$4
-VERSION_TAG=$5
+CSI_DIR=$2
+DOCKER_REPO=$3
+VERSION_TAG=$4
 
 CP_BIN=${WORKDIR}/cp-bin
 NB_BIN=${WORKDIR}/nb-bin
 CSI_BIN=${WORKDIR}/csi-bin
 
 mkdir -p \
-  "${WORKDIR}" \
-  "${CP_BIN}" \
   "${NB_BIN}" \
-  "${CSI_BIN}"
 
 echo "====================================="
 echo "Installing dependencies"
@@ -74,29 +70,6 @@ minikube start \
 
 kubectl get nodes
 
-echo "====================================="
-echo "build niova-mdsvc"
-echo "====================================="
-
-cd "$MDSVC_DIR"
-git checkout main
-cd modules/niova-pumicedb/modules/niova-raft/modules/niova-core
-
-./prepare.sh && ./configure --prefix="${CP_BIN}" && make -j$(nproc) && sudo make install
-
-cd ../..
-
-./prepare.sh && ./configure --with-niova="${CP_BIN}" --prefix="${CP_BIN}" && make -j$(nproc) && sudo make install
-
-cd ../..
-
-./prepare.sh && ./configure --with-niova="${CP_BIN}" --prefix="${CP_BIN}" && make -j$(nproc) && sudo make install
-
-cd ../..
-
-sudo env PATH=/usr/local/go/bin:$PATH make -e DIR="${CP_BIN}" install_all
-
-echo "====================================="
 echo "build niova-block"
 echo "====================================="
 : << 'COMMENT'
@@ -119,12 +92,6 @@ cd ../..
 COMMENT
 
 echo "====================================="
-echo "build niova-block-csi"
-echo "====================================="
-
-make build BUILD_DIR="${CSI_BIN}"
-
-echo "====================================="
 echo "Creating test disk"
 echo "====================================="
 
@@ -136,6 +103,8 @@ dd if=/dev/zero \
   count=10240
 
 sudo losetup -fP disk.img
+
+lsblk
 
 Cp -rf "$MDSVC_DIR"/scripts/deploy/* "${CP_BIN}"
 cd "${CP_BIN}"
