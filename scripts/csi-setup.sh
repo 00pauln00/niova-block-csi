@@ -106,14 +106,28 @@ sudo losetup -fP disk.img
 
 lsblk
 
-Cp -rf "$MDSVC_DIR"/scripts/deploy/* "${CP_BIN}"
+Cp -rf "$CSI_DIR"/niova-mdsvc/scripts/deploy/* "${CP_BIN}"
 cd "${CP_BIN}"
+ls
+
+export GOSSIP_NODE_IP=$(ip route get 1.1.1.1 | awk '{print $7; exit}')
+export GOSSIP_START_PORT=10110
+export GOSSIP_END_PORT=10160
+export PEER_PORT=20000
+export CLIENT_PORT=20105
+
+export OUTPUT_DIR=${CP_BIN}/ctlplane/
+export BIN_DIR=${CP_BIN}/libexec/niova/
+export LIB_DIR=${CP_BIN}/lib/
+envsubst < $CSI_DIR/scripts/config.yaml.tpl > config.yaml
+
+./deploy.sh -m init config.yaml
 
 echo "====================================="
 echo "Build CSI images"
 echo "====================================="
 
-cd "${WORKDIR}/niova-block-csi/docker"
+cd "$CSI_DIR/docker"
 
 sudo ./build.sh "${CSI_BIN}" "${NB_BIN}" "${DOCKER_REPO}" "${VERSION_TAG}"
 
