@@ -24,31 +24,23 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Verify sources
-        run: |
-          echo "Workspace: $GITHUB_WORKSPACE"
-          ls -la
-          ls -la niova-mdsvc
-
       - name: Update Submodules
         run: |
           git submodule init
           git submodule sync --recursive
           git submodule update --init --recursive
 
-      - name: Checkout niova-block
-        uses: actions/checkout@v4
-        with:
-          repository: niova/niova-block
-          path: niova-block
-          submodules: recursive
-
       - name: Verify sources
         run: |
           echo "Workspace: $GITHUB_WORKSPACE"
           ls -la
           ls -la niova-mdsvc || true
-          ls -la niova-block
+
+      - name: Network details
+        run: |
+          hostname
+          ip addr show
+          curl -s ifconfig.me
 
       - name: Run CSI setup
         run: |
@@ -57,7 +49,6 @@ jobs:
           ./scripts/csi-setup.sh \
             /home/runner/csi-workdir \
             "$GITHUB_WORKSPACE/niova-mdsvc" \
-            "$GITHUB_WORKSPACE/niova-block" \
             "$GITHUB_WORKSPACE" \
             paro1618/niova-csi \
             v10

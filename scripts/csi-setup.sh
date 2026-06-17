@@ -4,10 +4,9 @@ set -euo pipefail
 
 WORKDIR=$1
 MDSVC_DIR=$2
-NBLOCK_DIR=$3
-CSI_DIR=$4
-DOCKER_REPO=$5
-VERSION_TAG=$6
+CSI_DIR=$3
+DOCKER_REPO=$4
+VERSION_TAG=$5
 
 CP_BIN=${WORKDIR}/cp-bin
 NB_BIN=${WORKDIR}/nb-bin
@@ -80,7 +79,7 @@ echo "build niova-mdsvc"
 echo "====================================="
 
 cd "$MDSVC_DIR"
-
+git checkout main
 cd modules/niova-pumicedb/modules/niova-raft/modules/niova-core
 
 ./prepare.sh && ./configure --prefix="${CP_BIN}" && make -j$(nproc) && sudo make install
@@ -100,7 +99,7 @@ sudo env PATH=/usr/local/go/bin:$PATH make -e DIR="${CP_BIN}" install_all
 echo "====================================="
 echo "build niova-block"
 echo "====================================="
-
+: << 'COMMENT'
 cd "$NBLOCK_DIR"
 cd niova-core
 
@@ -117,15 +116,12 @@ autoreconf -i && ./configure --prefix="${NB_BIN}" && make -j$(nproc) && sudo mak
 cd ../..
 
 ./prepare.sh && ./configure --with-niova="${NB_BIN}" --prefix="${NB_BIN}" && make -j$(nproc) && sudo make install
+COMMENT
 
 echo "====================================="
 echo "build niova-block-csi"
 echo "====================================="
 
-cd "$CSI_DIR"
-cd niova-mdsvc
-git checkout main
-cd ..
 make build BUILD_DIR="${CSI_BIN}"
 
 echo "====================================="
@@ -140,6 +136,9 @@ dd if=/dev/zero \
   count=10240
 
 sudo losetup -fP disk.img
+
+Cp -rf "$MDSVC_DIR"/scripts/deploy/* "${CP_BIN}"
+cd "${CP_BIN}"
 
 echo "====================================="
 echo "Build CSI images"
