@@ -106,7 +106,7 @@ sudo losetup -fP disk.img
 
 lsblk
 
-Cp -rf "$CSI_DIR"/niova-mdsvc/scripts/deploy/* "${CP_BIN}"
+cp -rf "$CSI_DIR"/niova-mdsvc/scripts/deploy/* "${CP_BIN}"
 cd "${CP_BIN}"
 ls
 
