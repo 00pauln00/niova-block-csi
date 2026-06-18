@@ -129,7 +129,7 @@ echo "====================================="
 
 cd "$CSI_DIR/docker"
 
-sudo ./build.sh "${CSI_BIN}" "${NB_BIN}" "${DOCKER_REPO}" "${VERSION_TAG}"
+sudo ./build.sh "${CSI_BIN}" "${NB_BIN}" "${DOCKER_REPO}" "${VERSION_TAG}" "false"
 
 echo "====================================="
 echo "Load images into Minikube"
