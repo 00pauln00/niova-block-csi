@@ -16,7 +16,7 @@ spec:
       hostPID: true
       containers:
         - name: niova-csi
-          image: paro1618/niova-csi:node-v4
+          image: quay.io/niova/csi-node:latest
           securityContext:
             privileged: true
             capabilities:
