@@ -11,7 +11,11 @@ require (
 	github.com/container-storage-interface/spec v1.8.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
+	github.com/onsi/ginkgo/v2 v2.13.0
+	github.com/onsi/gomega v1.27.10
 	google.golang.org/grpc v1.55.0-dev
+	k8s.io/api v0.27.0-alpha.3
+	k8s.io/apimachinery v0.27.0-alpha.3
 	k8s.io/client-go v0.27.0-alpha.3
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/mount-utils v0.28.0
