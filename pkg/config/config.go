@@ -147,9 +147,9 @@ func (cm *ConfigManager) AllocVdev(requiredSize int64, filter, entityID, pfsId s
 	klog.Infof("Allocate vdev with failure domain: %s", entityID)
 	// TODO: NumReplica should be passed from PVC file.
 	Vdev := &ctlplfl.VdevReq{
-		Vdev: &ctlplfl.VdevCfg{
+		Vdev: &ctlplfl.VdevConfig{
 			Size:       requiredSize,
-			NumReplica: 1,
+			DataBlkCnt: 1,
 			PFSID:      pfsId,
 		},
 		Filter: ctlplfl.Filter{
@@ -192,34 +192,34 @@ func (cm *ConfigManager) RemoveVolume(volumeID string) (string, error) {
 	return resp.ID, nil
 }
 
-func (cm *ConfigManager) GetVolume(volumeID string) (ctlplfl.VdevCfg, error) {
+func (cm *ConfigManager) GetVolume(volumeID string) (ctlplfl.VdevConfig, error) {
 	vdevreq := &ctlplfl.GetReq{
 		ID: volumeID,
 	}
-	var vdevcfg ctlplfl.VdevCfg
+	var vdevcfg ctlplfl.VdevConfig
 	err := cm.RetryAuth(func() error {
 		var err error
-		vdevcfg, err = cm.Controller.Cpclient.GetVdevCfg(vdevreq)
+		vdevcfg, err = cm.Controller.Cpclient.GetVdevConfig(vdevreq)
 		return err
 	})
 	if err != nil {
-		return ctlplfl.VdevCfg{}, err
+		return ctlplfl.VdevConfig{}, err
 	}
 	return vdevcfg, nil
 }
 
-func (cm *ConfigManager) ListVolumes() ([]ctlplfl.VdevCfg, error) {
+func (cm *ConfigManager) ListVolumes() ([]ctlplfl.VdevConfig, error) {
 	Req := &ctlplfl.GetReq{
 		GetAll: true,
 	}
-	var vdevcfgs []ctlplfl.VdevCfg
+	var vdevcfgs []ctlplfl.VdevConfig
 	err := cm.RetryAuth(func() error {
 		var err error
-		vdevcfgs, err = cm.Controller.Cpclient.GetVdevCfgs(Req)
+		vdevcfgs, err = cm.Controller.Cpclient.GetVdevConfigs(Req)
 		return err
 	})
 	if err != nil {
-		return []ctlplfl.VdevCfg{}, err
+		return []ctlplfl.VdevConfig{}, err
 	}
 	return vdevcfgs, nil
 }
