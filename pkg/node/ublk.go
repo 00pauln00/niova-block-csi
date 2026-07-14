@@ -43,6 +43,7 @@ func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string) (string, in
 	args := []string{
 		"-t", "cp",
 		"-v", volumeID,
+		"-u", volumeID,
 		"-q", QUEUEDEPTH,
 		"-b", MAXBUFSIZE,
 		"-T",
