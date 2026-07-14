@@ -1,0 +1,61 @@
+# StorageClass
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: csi-block-sc2
+provisioner: csi.niova.com
+volumeBindingMode: WaitForFirstConsumer
+parameters:
+  pvcName: "block-pvc2"
+---
+# PVC (raw block)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: block-pvc2
+spec:
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Block
+  storageClassName: csi-block-sc2
+  resources:
+    requests:
+      storage: 100Mi
+---
+# Deployment using raw block device
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: block-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: block-test
+  template:
+    metadata:
+      labels:
+        app: block-test
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dev-client-001
+      containers:
+      - name: app
+        image: busybox
+        command:
+          - sh
+          - -c
+          - |
+            echo "writing to raw block device"
+            dd if=/dev/zero of=/dev/myblock bs=1M count=5
+            echo "reading from raw block device"
+            dd if=/dev/myblock of=/tmp/out bs=1M count=5
+            ls -lh /tmp/out
+            sleep 3600
+        volumeDevices:
+        - name: block
+          devicePath: /dev/myblock
+      volumes:
+      - name: block
+        persistentVolumeClaim:
+          claimName: block-pvc2

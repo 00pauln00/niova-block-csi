@@ -16,7 +16,7 @@ spec:
       hostPID: true
       containers:
         - name: niova-csi
-          image: paro1618/niova-csi:node-v4
+          image: paro1618/niova-csi:node-v8
           securityContext:
             privileged: true
             capabilities:
@@ -38,7 +38,11 @@ spec:
             - name: NIOVA_GOSSIP_PATH
               value: "/etc/niova/gossipNodes"
             - name: NIOVA_GOSSIP_KEY
-              value: "5c587ba3-0f41-4476-b444-ffc6bba95ff0"
+              value: "4c7790b6-31ab-41c1-99ae-fd65e9e238ac"
+            - name: NIOVA_BLOCK_CP_AUTH_USERNAME
+              value: "admin"
+            - name: NIOVA_BLOCK_CP_AUTH_SECRET
+              value: "test-admin-secret-123"
           terminationMessagePath: /tmp/termination-log
           volumeMounts:
             - name: plugin-dir
@@ -78,7 +82,6 @@ spec:
             - name: usr-bin
               mountPath: /usr/bin
               mountPropagation: HostToContainer
-
         - name: driver-registrar
           image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.8.0
           args:

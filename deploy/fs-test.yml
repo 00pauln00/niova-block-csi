@@ -1,0 +1,73 @@
+# StorageClass
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: csi-filesystem-sc2
+provisioner: csi.niova.com
+volumeBindingMode: WaitForFirstConsumer
+parameters:
+  pvcName: "filesystem-pvc2"
+  csi.storage.k8s.io/fstype: xfs
+---
+# PVC (Filesystem)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: filesystem-pvc2
+spec:
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Filesystem
+  storageClassName: csi-filesystem-sc2
+  resources:
+    requests:
+      storage: 500Mi
+
+---
+# Deployment using filesystem PVC
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: filesystem-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: filesystem-test
+
+  template:
+    metadata:
+      labels:
+        app: filesystem-test
+
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dev-client-002
+
+      containers:
+      - name: app
+        image: busybox
+        command:
+          - sh
+          - -c
+          - |
+            echo "writing to filesystem"
+            echo "hello filesystem pvc" > /data/testfile
+
+            echo "reading from filesystem"
+            cat /data/testfile
+
+            echo "filesystem details"
+            df -h /data
+            ls -lh /data
+
+            sleep 3600
+
+        volumeMounts:
+        - name: filesystem-volume
+          mountPath: /data
+
+      volumes:
+      - name: filesystem-volume
+        persistentVolumeClaim:
+          claimName: filesystem-pvc2

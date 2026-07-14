@@ -19,7 +19,7 @@ spec:
       hostPID: true
       containers:
         - name: niova-csi
-          image: paro1618/niova-csi:controller-v4
+          image: paro1618/niova-csi:controller-v8
           securityContext:
             privileged: true
             capabilities:
@@ -32,14 +32,22 @@ spec:
           imagePullPolicy: Always
           command: ["/bin/sh", "-c"]
           args:
-            - ulimit -l unlimited && exec /opt/niova/niova-block-csi-controller -driver-name=csi.niova.com -version=0.1.0 -node-id=$(NODE_ID) -endpoint=unix:///csi/custom2.sock -configpath=/etc/niova/gossipNodes -r ${RUN_ID}
+            - ulimit -l unlimited && exec /opt/niova/niova-block-csi-controller -driver-name=csi.niova.com -version=0.1.0 -node-id=$(NODE_ID) -endpoint=unix:///csi/custom.sock -configpath=/etc/niova/gossipNodes -r ${RUN_ID}
           env:
             - name: NODE_ID
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: RUN_ID
-              value: "5c587ba3-0f41-4476-b444-ffc6bba95ff0"
+              value: "4c7790b6-31ab-41c1-99ae-fd65e9e238ac"
+            - name: NIOVA_GOSSIP_PATH
+              value: "/etc/niova/gossipNodes"
+            - name: NIOVA_GOSSIP_KEY
+              value: "4c7790b6-31ab-41c1-99ae-fd65e9e238ac"
+            - name: NIOVA_BLOCK_CP_AUTH_USERNAME
+              value: "admin"
+            - name: NIOVA_BLOCK_CP_AUTH_SECRET
+              value: "test-admin-secret-123"
           terminationMessagePath: /tmp/termination-log
           volumeMounts:
             - name: plugin-dir
@@ -74,16 +82,18 @@ spec:
 
         - name: csi-provisioner
           image: registry.k8s.io/sig-storage/csi-provisioner:v3.5.0
+          imagePullPolicy: Always
           args:
-            - "--csi-address=/csi/custom2.sock"
+            - "--csi-address=/csi/custom.sock"
             - "--v=5"
           volumeMounts:
             - name: plugin-dir
               mountPath: /csi
         - name: csi-attacher
           image: registry.k8s.io/sig-storage/csi-attacher:v4.4.0
+          imagePullPolicy: Always
           args:
-            - "--csi-address=/csi/custom2.sock"
+            - "--csi-address=/csi/custom.sock"
             - "--v=5"
           volumeMounts:
             - name: plugin-dir
