@@ -58,9 +58,6 @@ func (d *CSIDriver) SetupIdentityServer() {
 func (d *CSIDriver) Run(ctx context.Context) error {
 	klog.Infof("Starting CSI driver %s version %s", d.name, d.version)
 
-	// Setup identity server (always required)
-	d.SetupIdentityServer()
-
 	// Parse endpoint
 	proto, addr, err := parseEndpoint(d.endpoint)
 	if err != nil {
@@ -165,13 +162,6 @@ func (is *IdentityServer) GetPluginCapabilities(ctx context.Context, req *csi.Ge
 				Type: &csi.PluginCapability_Service_{
 					Service: &csi.PluginCapability_Service{
 						Type: csi.PluginCapability_Service_CONTROLLER_SERVICE,
-					},
-				},
-			},
-			{
-				Type: &csi.PluginCapability_Service_{
-					Service: &csi.PluginCapability_Service{
-						Type: csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS,
 					},
 				},
 			},
