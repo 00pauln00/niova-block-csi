@@ -19,31 +19,26 @@ type ControllerServer struct {
 }
 
 func NewControllerServer(configManager *config.ConfigManager) *ControllerServer {
+	implementedRPCs := []csi.ControllerServiceCapability_RPC_Type{
+        	csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
+	        csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
+		csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
+		csi.ControllerServiceCapability_RPC_GET_CAPACITY,
+    	}
+	var caps []*csi.ControllerServiceCapability
+    	for _, rpcType := range implementedRPCs {
+        	caps = append(caps, &csi.ControllerServiceCapability{
+	            Type: &csi.ControllerServiceCapability_Rpc{
+        	        Rpc: &csi.ControllerServiceCapability_RPC{
+                	    Type: rpcType,
+               	 	},
+           	    },
+        	})
+    	}
+
 	return &ControllerServer{
 		config: configManager,
-		caps: []*csi.ControllerServiceCapability{
-			{
-				Type: &csi.ControllerServiceCapability_Rpc{
-					Rpc: &csi.ControllerServiceCapability_RPC{
-						Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
-					},
-				},
-			},
-			{
-				Type: &csi.ControllerServiceCapability_Rpc{
-					Rpc: &csi.ControllerServiceCapability_RPC{
-						Type: csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
-					},
-				},
-			},
-			{
-				Type: &csi.ControllerServiceCapability_Rpc{
-					Rpc: &csi.ControllerServiceCapability_RPC{
-						Type: csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
-					},
-				},
-			},
-		},
+		caps: caps,
 	}
 }
 
