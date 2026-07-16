@@ -21,25 +21,25 @@ type ControllerServer struct {
 
 func NewControllerServer(configManager *config.ConfigManager) *ControllerServer {
 	implementedRPCs := []csi.ControllerServiceCapability_RPC_Type{
-        	csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
-	        csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
+		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
+		csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
 		csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
 		csi.ControllerServiceCapability_RPC_GET_CAPACITY,
-    	}
+	}
 	var caps []*csi.ControllerServiceCapability
-    	for _, rpcType := range implementedRPCs {
-        	caps = append(caps, &csi.ControllerServiceCapability{
-	            Type: &csi.ControllerServiceCapability_Rpc{
-        	        Rpc: &csi.ControllerServiceCapability_RPC{
-                	    Type: rpcType,
-               	 	},
-           	    },
-        	})
-    	}
+	for _, rpcType := range implementedRPCs {
+		caps = append(caps, &csi.ControllerServiceCapability{
+			Type: &csi.ControllerServiceCapability_Rpc{
+				Rpc: &csi.ControllerServiceCapability_RPC{
+					Type: rpcType,
+				},
+			},
+		})
+	}
 
 	return &ControllerServer{
 		config: configManager,
-		caps: caps,
+		caps:   caps,
 	}
 }
 
@@ -230,25 +230,25 @@ func (cs *ControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 	klog.Infof("ListVolumes: called with args %+v", req)
 
 	var entries []*csi.ListVolumesResponse_Entry
-	// The starting_token is a pagination parameter in the CSI ListVolumes API. 
+	// The starting_token is a pagination parameter in the CSI ListVolumes API.
 	// It's used to resume listing volumes from where a previous request left
 	// off when there are many volumes.
 	// Validate starting_token if provided
 	// TODO: Replace the current starting token implementation
 	// with proper pagination handling
-    	startingToken := 0
-    	if req.GetStartingToken() != "" {
-        	token := req.GetStartingToken()
-        
-        	// Parse the token - must be a valid non-negative integer
-	        parsed, err := strconv.Atoi(token)
-        	if err != nil || parsed < 0 {
-	            return nil, status.Error(codes.Aborted, fmt.Sprintf("invalid starting_token: %s", token))
-        	}
-        	startingToken = parsed
-    	}
-    
-    	klog.Infof("Using starting_token: %d", startingToken)
+	startingToken := 0
+	if req.GetStartingToken() != "" {
+		token := req.GetStartingToken()
+
+		// Parse the token - must be a valid non-negative integer
+		parsed, err := strconv.Atoi(token)
+		if err != nil || parsed < 0 {
+			return nil, status.Error(codes.Aborted, fmt.Sprintf("invalid starting_token: %s", token))
+		}
+		startingToken = parsed
+	}
+
+	klog.Infof("Using starting_token: %d", startingToken)
 	vols, err := cs.config.ListVolumes()
 	if err != nil {
 		klog.Errorf("Failed to get volumes list from cp: %v", err)
