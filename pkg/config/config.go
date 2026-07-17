@@ -158,13 +158,14 @@ func (cm *ConfigManager) RetryAuth(fn func() error) error {
 	return fmt.Errorf("operation failed after %d retries", types.MAX_RETRY)
 }
 
-func (cm *ConfigManager) AllocVdev(requiredSize int64, filter, entityID, pfsId string) (string, error) {
+func (cm *ConfigManager) AllocVdev(name string, requiredSize int64, filter, entityID, pfsId string) (string, error) {
 	cm.Mutex.RLock()
 	defer cm.Mutex.RUnlock()
 	klog.Infof("Allocate vdev with failure domain: %s", entityID)
 	// TODO: NumReplica should be passed from PVC file.
 	Vdev := &ctlplfl.VdevReq{
 		Vdev: &ctlplfl.VdevConfig{
+			Name:       name,
 			Size:       requiredSize,
 			DataBlkCnt: 1,
 			PFSID:      pfsId,
@@ -223,6 +224,15 @@ func (cm *ConfigManager) GetVolume(volumeID string) (ctlplfl.VdevConfig, error) 
 		return ctlplfl.VdevConfig{}, err
 	}
 	return vdevcfg, nil
+}
+
+// GetVolumeByName looks up a vdev by its CSI volume name instead of its ID.
+// The control plane's GetReq.ID accepts either: a UUID is looked up
+// directly, anything else is resolved as a name via a server-side reverse
+// index. Returns an error whose message is exactly "vdev not found" when
+// no vdev with that name exists.
+func (cm *ConfigManager) GetVolumeByName(name string) (ctlplfl.VdevConfig, error) {
+	return cm.GetVolume(name)
 }
 
 func (cm *ConfigManager) ListVolumes() ([]ctlplfl.VdevConfig, error) {
