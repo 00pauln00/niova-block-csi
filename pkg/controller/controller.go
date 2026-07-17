@@ -145,8 +145,18 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		return nil, status.Error(codes.InvalidArgument, "Node ID cannot be empty")
 	}
 
-	volumeID := req.GetVolumeId()
+	if req.GetVolumeCapability() == nil {
+		return nil, status.Error(codes.InvalidArgument, "Volume capability cannot be empty")
+	}
 	nodeID := req.GetNodeId()
+	volumeID := req.GetVolumeId()
+	exists, err := cs.config.NodeExists(nodeID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to check node %s: %v", nodeID, err)
+	}
+	if !exists {
+		return nil, status.Errorf(codes.NotFound, "node %s not found", nodeID)
+	}
 
 	// Get volume info
 	cs.config.Mutex.Lock()
