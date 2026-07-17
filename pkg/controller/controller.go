@@ -66,6 +66,28 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if cap.GetMount() == nil && cap.GetBlock() == nil {
 		return nil, status.Error(codes.InvalidArgument, "Unsupported volume capability")
 	}
+
+	volumeName := req.GetName()
+
+	// Idempotency: a vdev with this name may already exist from a
+	// previous, possibly retried, CreateVolume call. Return it as-is
+	// instead of allocating a duplicate. Any error from the lookup
+	// (including "not found") is treated as "no existing volume" and
+	// falls through to AllocVdev below.
+	if existing, err := cs.config.GetVolumeByName(volumeName); err == nil {
+		if existing.Size != volumeSize {
+			return nil, status.Error(codes.AlreadyExists,
+				fmt.Sprintf("volume %s already exists with a different capacity", volumeName))
+		}
+		klog.Infof("Volume %s already exists as %s, returning existing volume", volumeName, existing.ID)
+		return &csi.CreateVolumeResponse{
+			Volume: &csi.Volume{
+				VolumeId:      existing.ID,
+				CapacityBytes: existing.Size,
+			},
+		}, nil
+	}
+
 	pvcName := req.GetParameters()["pvcName"]
 	pvcNamespace := "default"
 	var filter string
@@ -88,7 +110,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		klog.Infof("No PVC name provided in parameters — proceeding with FD=nil")
 	}
 	// Allocate Vdev of required size
-	volumeID, err := cs.config.AllocVdev(volumeSize, filter, entityId, pfsId)
+	volumeID, err := cs.config.AllocVdev(volumeName, volumeSize, filter, entityId, pfsId)
 	if err != nil {
 		klog.Errorf("Failed to Allocate Vdev with error : %v", err)
 		return nil, status.Error(codes.ResourceExhausted, err.Error())
