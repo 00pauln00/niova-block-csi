@@ -7,10 +7,8 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/niova-block-csi/pkg/config"
-	"github.com/niova-block-csi/pkg/types"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 )
 
@@ -66,29 +64,14 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if cap.GetMount() == nil && cap.GetBlock() == nil {
 		return nil, status.Error(codes.InvalidArgument, "Unsupported volume capability")
 	}
-	pvcName := req.GetParameters()["pvcName"]
-	pvcNamespace := "default"
-	var filter string
-	var entityId string
-	var pfsId string
-	klog.Infof("Resolved PVC Name: %s, Namespace: %s", pvcName, pvcNamespace)
-	if pvcName != "" {
-		targetPVC, err := cs.config.K8sClient.CoreV1().PersistentVolumeClaims(pvcNamespace).Get(ctx, pvcName, metav1.GetOptions{})
-		if err != nil {
-			klog.Infof("Error in getting PVC %s: %v", pvcName, err)
-			return nil, fmt.Errorf("failed to get PVC %s: %v", pvcName, err)
-		}
-
-		klog.Infof("getting the annotations from k8's")
-		filter = targetPVC.Annotations[types.FailureDomain]
-		entityId = targetPVC.Annotations[types.EntityID]
-		pfsId = targetPVC.Annotations[types.PfsID]
-		klog.Infof("provided Annotations is filter=%s, entityid=%s, pfsId=%s", filter, entityId, pfsId)
-	} else {
-		klog.Infof("No PVC name provided in parameters — proceeding with FD=nil")
-	}
+	p := req.GetParameters()
+	fd := p["failuredomain"]
+	entityId := p["entityID"]
+	pfsId := p["pfsId"]
+	klog.Infof("failuredomain provided is %s  and entityId provided is %s and  pfsId provided is %s", fd, entityId, pfsId)
+	
 	// Allocate Vdev of required size
-	volumeID, err := cs.config.AllocVdev(volumeSize, filter, entityId, pfsId)
+	volumeID, err := cs.config.AllocVdev(volumeSize, fd, entityId, pfsId)
 	if err != nil {
 		klog.Errorf("Failed to Allocate Vdev with error : %v", err)
 		return nil, status.Error(codes.ResourceExhausted, err.Error())
