@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -13,6 +14,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/niova-block-csi/pkg/types"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -57,6 +60,20 @@ func StartAuthClient(raftuuid, raftconfig string) (*userClient.Client, func()) {
 
 	c, tearDown := userClient.New(cfg)
 	return c, tearDown
+}
+
+func (cm *ConfigManager) NodeExists(nodeID string) (bool, error) {
+	if cm.K8sClient == nil {
+		return false, fmt.Errorf("k8s client is nil")
+	}
+	_, err := cm.K8sClient.CoreV1().Nodes().Get(context.Background(), nodeID, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func (cm *ConfigManager) InitNiovaClient(c *cpClient.CliCFuncs, u *userClient.Client) error {
