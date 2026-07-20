@@ -150,10 +150,22 @@ func (mm *MountManager) BindMount(sourcePath, targetPath string) error {
 
 func (mm *MountManager) Unmount(targetPath string) error {
 	klog.Infof("Unmounting %s", targetPath)
+	_, err := os.Stat(targetPath)
 
+	if os.IsNotExist(err) {
+		klog.Infof("Path %s does not exist, already unmounted", targetPath)
+		return nil
+	}
+
+	if err != nil {
+		return err
+	}
 	// Check if mounted
 	mounted, err := mm.mounter.IsMountPoint(targetPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
 		return fmt.Errorf("failed to check if target is mounted: %v", err)
 	}
 
@@ -164,6 +176,9 @@ func (mm *MountManager) Unmount(targetPath string) error {
 
 	// Unmount
 	if err := mm.mounter.Unmount(targetPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
 		return fmt.Errorf("failed to unmount %s: %v", targetPath, err)
 	}
 
@@ -176,11 +191,14 @@ func (mm *MountManager) CleanupMountPoint(targetPath string) error {
 
 	// Unmount if mounted
 	if err := mm.Unmount(targetPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
 		return fmt.Errorf("failed to unmount during cleanup: %v", err)
 	}
 
 	// Remove directory if empty
-	if err := os.Remove(targetPath); err != nil || !os.IsNotExist(err) {
+	if err := os.Remove(targetPath); err != nil && !os.IsNotExist(err) {
 		klog.Warningf("Failed to remove directory %s: %v", targetPath, err)
 		return fmt.Errorf("Failed to remove the path %s with err %v", targetPath, err)
 	}

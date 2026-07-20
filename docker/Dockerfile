@@ -14,6 +14,10 @@ RUN apt-get update && \
     git \
     wget \
     curl \
+    libcjson1 \
+    libcjson-dev \
+    libisal-dev \
+    libisal2 \
     sudo && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*

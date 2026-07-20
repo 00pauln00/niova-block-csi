@@ -224,7 +224,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		}
 
 		// Create target file
-		f, err := os.OpenFile(targetPath, os.O_CREATE, 0600)
+		f, err := os.OpenFile(targetPath, os.O_CREATE|os.O_RDWR, 0600)
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
@@ -244,7 +244,6 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	ns.mutex.Lock()
 	nodeVol.TargetPath = targetPath
 	ns.mutex.Unlock()
-
 	klog.Infof("Successfully published volume %s to %s", volumeID, targetPath)
 	return &csi.NodePublishVolumeResponse{}, nil
 }
@@ -269,26 +268,30 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 
 	if !exists {
 		klog.Warningf("Volume %s not found in node map, considering it already unpublished", volumeID)
-		return &csi.NodeUnpublishVolumeResponse{}, nil
 	}
 
 	// --- Filesystem / unmount operations: no lock held ---
 	if err := ns.mountManager.Unmount(targetPath); err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to unmount target path: %v", err))
-	}
-
-	if nodeVol.VolumeMode == types.BLOCK_MODE {
-		_ = os.Remove(targetPath)
-	} else {
-		if err := ns.mountManager.CleanupMountPoint(targetPath); err != nil {
-			klog.Warningf("Failed to cleanup target path %s: %v", targetPath, err)
+		if os.IsNotExist(err) {
+			klog.Infof("Target path %s already removed", targetPath)
+		} else {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to unmount target path: %v", err))
 		}
 	}
 
-	// Write lock: clear the TargetPath field on the shared NodeVolume struct.
-	ns.mutex.Lock()
-	nodeVol.TargetPath = ""
-	ns.mutex.Unlock()
+	if exists {
+		if nodeVol.VolumeMode == types.BLOCK_MODE {
+			_ = os.Remove(targetPath)
+		} else {
+			if err := ns.mountManager.CleanupMountPoint(targetPath); err != nil {
+				klog.Warningf("Failed to cleanup target path %s: %v", targetPath, err)
+			}
+		}
+		// Write lock: clear the TargetPath field on the shared NodeVolume struct.
+		ns.mutex.Lock()
+		nodeVol.TargetPath = ""
+		ns.mutex.Unlock()
+	}
 
 	klog.Infof("Successfully unpublished volume %s from %s", volumeID, targetPath)
 	return &csi.NodeUnpublishVolumeResponse{}, nil
