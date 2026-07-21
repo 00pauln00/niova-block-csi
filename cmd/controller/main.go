@@ -75,8 +75,6 @@ func main() {
 	// Setup controller server
 	csiDriver.SetupControllerServer()
 
-	csiDriver.SetupNodeServer()
-
 	// Setup identity server
 	csiDriver.SetupIdentityServer()
 
