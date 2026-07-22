@@ -7,6 +7,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/niova-block-csi/pkg/config"
+	"github.com/niova-block-csi/pkg/types"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
@@ -87,13 +88,13 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	p := req.GetParameters()
-	fd := p["failuredomain"]
-	entityId := p["entityID"]
-	pfsId := p["pfsId"]
+	fd := p[types.FailureDomain]
+	entityId := p[types.EntityID]
+	pfsId := p[types.PfsID]
 	klog.Infof("failuredomain provided is %s  and entityId provided is %s and  pfsId provided is %s", fd, entityId, pfsId)
 	
 	// Allocate Vdev of required size
-	volumeID, err := cs.config.AllocVdev(volumeSize, fd, entityId, pfsId)
+	volumeID, err := cs.config.AllocVdev(volumeName, volumeSize, fd, entityId, pfsId)
 	if err != nil {
 		klog.Errorf("Failed to Allocate Vdev with error : %v", err)
 		return nil, status.Error(codes.ResourceExhausted, err.Error())

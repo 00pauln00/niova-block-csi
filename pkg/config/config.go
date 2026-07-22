@@ -25,6 +25,7 @@ type ConfigManager struct {
 	CpConfigPath string
 	Controller   *types.Controller
 	Mutex        sync.RWMutex
+	K8sClient    *kubernetes.Clientset
 }
 
 func NewConfigManager(cpConfigPath string) *ConfigManager {
@@ -43,6 +44,22 @@ func StartAuthClient(raftuuid, raftconfig string) (*userClient.Client, func()) {
 
 	c, tearDown := userClient.New(cfg)
 	return c, tearDown
+}
+
+func NewK8sController() (*kubernetes.Clientset, error) {
+	// Use in-cluster config — works automatically when running inside Kubernetes
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load in-cluster config: %v", err)
+	}
+
+	// Create the clientset
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Kubernetes clientset: %v", err)
+	}
+
+	return clientset, nil
 }
 
 func (cm *ConfigManager) NodeExists(nodeID string) (bool, error) {
