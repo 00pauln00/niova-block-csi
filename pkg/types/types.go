@@ -22,9 +22,9 @@ const (
 	NiovaGossipKey  = "NIOVA_GOSSIP_KEY"
 	NiovaGossipPath = "NIOVA_GOSSIP_PATH"
 
-	FailureDomain = "niova.com/failuredomain"
-	EntityID      = "niova.com/EntityId"
-	PfsID         = "niova.com/PfsID"
+	FailureDomain = "failuredomain"
+	EntityID      = "entityID"
+	PfsID         = "pfsId"
 	MAX_RETRY     = 2
 )
 

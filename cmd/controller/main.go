@@ -44,6 +44,12 @@ func main() {
 
 	// Create config manager
 	configManager := config.NewConfigManager(*ConfigPath)
+	k8sClient, err := config.NewK8sController()
+	if err != nil {
+		klog.Fatalf("failed to load k8's client %v ", err)
+	}
+
+	configManager.K8sClient = k8sClient
 
 	c := cpClient.InitCliCFuncs(uuid.New().String(), *raftID, *ConfigPath, *Cplog)
 	u, teardown := config.StartAuthClient(*raftID, *ConfigPath)
@@ -58,7 +64,7 @@ func main() {
 	}
 	klog.Infof("connection with control plane is sucessful %v", c)
 
-	err := configManager.UserLogin()
+	err = configManager.UserLogin()
 	if err != nil {
 		klog.Fatalf("Failed to Login with niova control plane", err)
 	}
