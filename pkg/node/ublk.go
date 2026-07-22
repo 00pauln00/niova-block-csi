@@ -23,6 +23,7 @@ var (
 	workingDir    = "/var/niova"
 )
 
+
 type UblkManager struct {
 	ublkBinary string
 }
@@ -33,24 +34,22 @@ func NewUblkManager() *UblkManager {
 	}
 }
 
+// CreateUblkDevice starts a niova-ublk daemon for the given volume.
+// Returns (ublkDevicePath, pid, error) where ublkDevicePath is the stable
+// /dev/disk/by-uuid/<volumeID> symlink created by 61-niova-ublk.rules.
 func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string) (string, int, error) {
 	klog.Infof("Creating ublk device for volume %s", volumeID)
 
-	beforeublkDevices, err := lsblkDevices()
-	if err != nil {
-		return "", -1, status.Errorf(codes.Internal, "failed to list devices before start: %v", err)
-	}
-
-	// Command to create niova-ublk device
-	// Format: niova-ublk -v <ublk_id> -t cp -q <queuedepth> -b <bufsize> -T
-
-	cmd := exec.Command(um.ublkBinary,
+	args := []string{
 		"-t", "cp",
 		"-v", volumeID,
+		"-u", volumeID,
 		"-q", QUEUEDEPTH,
 		"-b", MAXBUFSIZE,
 		"-T",
-	)
+	}
+
+	cmd := exec.Command(um.ublkBinary, args...)
 	cmd.Env = append(cmd.Env,
 		fmt.Sprintf("LD_LIBRARY_PATH=%s", ldLibraryPath),
 		fmt.Sprintf("NIOVA_GOSSIP_PATH=%s", os.Getenv(types.NiovaGossipPath)),
@@ -66,8 +65,9 @@ func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string) (string, in
 	klog.Infof("ENV variables %s: %s and %s: %s, %s: %s and %s: %s ", types.NiovaGossipPath, os.Getenv(types.NiovaGossipPath), types.NiovaGossipKey, os.Getenv(types.NiovaGossipKey), types.NiovaUserName, os.Getenv(types.NiovaUserName), types.NiovaUserSecret, os.Getenv(types.NiovaUserSecret))
 	klog.Infof("Executing command: %s", cmd.String())
 
-	ublkDevicePath, err := waitForDevice(beforeublkDevices)
+	ublkDevicePath, err := waitForByUUIDLink(volumeID)
 	if err != nil {
+		cmd.Process.Kill()
 		return "", -1, err
 	}
 
@@ -107,32 +107,21 @@ func (um *UblkManager) extractUblkID(ublkDevicePath string) string {
 	return ""
 }
 
-func waitForDevice(beforeublkdevices []string) (string, error) {
-	var ublkPath string
-	existing := make(map[string]bool)
-	for _, dev := range beforeublkdevices {
-		existing[dev] = true
-	}
-	for {
-		time.Sleep(1 * time.Second)
-		afterDevices, err := lsblkDevices()
-		if err != nil {
-			return "", fmt.Errorf("failed to list devices after start: %v", err)
+// waitForByUUIDLink polls for the /dev/disk/by-uuid/<volumeID> symlink that
+// 61-niova-ublk.rules creates in response to niova-ublk's synthetic uevent.
+// The symlink appearing is an implicit readiness signal: niova-ublk only fires
+// the uevent after niova_ublk_start() completes successfully.
+func waitForByUUIDLink(volumeID string) (string, error) {
+	path := "/dev/disk/by-uuid/" + volumeID
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Lstat(path); err == nil {
+			return path, nil
 		}
-		for _, dev := range afterDevices {
-			if !existing[dev] {
-				ublkPath = dev
-				break
-			}
-		}
-		if ublkPath != "" {
-			break
-		}
+		time.Sleep(500 * time.Millisecond)
 	}
-	if ublkPath == "" {
-		return "", status.Errorf(codes.DeadlineExceeded, "timeout waiting for ublk device to appear")
-	}
-	return ublkPath, nil
+	return "", status.Errorf(codes.DeadlineExceeded,
+		"timed out waiting for udev symlink %s (is 61-niova-ublk.rules installed on the node?)", path)
 }
 
 func (um *UblkManager) GetUblkDeviceInfo(ublkDevicePath string) (map[string]string, error) {
@@ -169,31 +158,6 @@ func (um *UblkManager) GetUblkDeviceInfo(ublkDevicePath string) (map[string]stri
 	return info, nil
 }
 
-func lsblkDevices() ([]string, error) {
-	out, err := exec.Command("lsblk", "-n", "-o", "NAME,MOUNTPOINT").Output()
-	if err != nil {
-		return nil, err
-	}
-	lines := strings.Split(string(out), "\n")
-	var devices []string
-	for _, line := range lines {
-		fields := strings.Fields(line)
-		if len(fields) == 0 {
-			continue
-		}
-
-		name := fields[0]
-		mountpoint := ""
-		if len(fields) > 1 {
-			mountpoint = fields[1]
-		}
-
-		if strings.HasPrefix(name, "ublkb") && mountpoint == "" {
-			devices = append(devices, "/dev/"+name)
-		}
-	}
-	return devices, nil
-}
 
 func killByNameIfExists(pid int, ublkDevicePath string) error {
 	// Step 1: Check if the process exists and is accessible
