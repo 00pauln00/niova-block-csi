@@ -21,6 +21,7 @@ const (
 	NiovaUserSecret = "NIOVA_BLOCK_CP_AUTH_SECRET"
 	NiovaGossipKey  = "NIOVA_GOSSIP_KEY"
 	NiovaGossipPath = "NIOVA_GOSSIP_PATH"
+	NiovaUblkUnified = "NIOVA_BLOCK_UBLK_UNIFIED"
 
 	FailureDomain = "failuredomain"
 	EntityID      = "entityID"

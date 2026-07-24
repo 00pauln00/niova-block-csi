@@ -108,7 +108,7 @@ func (cm *ConfigManager) UserLogin() error {
 }
 
 func (cm *ConfigManager) VerifyTokenExpiryAndReLogin(exp error) error {
-	if errors.Is(exp, jwt.ErrTokenExpired) || strings.Contains(exp.Error(), "token is expired") {
+	if errors.Is(exp, jwt.ErrTokenExpired) || strings.Contains(exp.Error(), "token is expired") || strings.Contains(exp.Error(), "Invalid Token"){
 		err := cm.UserLogin()
 		if err != nil {
 			return err
