@@ -37,13 +37,13 @@ func main() {
 	klog.Infof("Node ID: %s", *nodeID)
 	klog.Infof("Endpoint: %s", *endpoint)
 	klog.Infof("ControlPlane config path: %s", *ConfigPath)
-        klog.Infof("Raft ID: %s", *raftID)
+	klog.Infof("Raft ID: %s", *raftID)
 
 	// Create config manager
-        configManager := config.NewConfigManager(*ConfigPath)
+	configManager := config.NewConfigManager(*ConfigPath)
 
-        // Create CSI driver
-        csiDriver := driver.NewCSIDriver(*driverName, *version, *nodeID, *endpoint, configManager)
+	// Create CSI driver
+	csiDriver := driver.NewCSIDriver(*driverName, *version, *nodeID, *endpoint, configManager)
 
 	// Setup node server
 	csiDriver.SetupNodeServer()
