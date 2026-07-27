@@ -23,7 +23,6 @@ var (
 	workingDir    = "/var/niova"
 )
 
-
 type UblkManager struct {
 	ublkBinary string
 }
@@ -158,7 +157,6 @@ func (um *UblkManager) GetUblkDeviceInfo(ublkDevicePath string) (map[string]stri
 
 	return info, nil
 }
-
 
 func killByNameIfExists(pid int, ublkDevicePath string) error {
 	// Step 1: Check if the process exists and is accessible

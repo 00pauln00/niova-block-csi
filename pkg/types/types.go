@@ -17,10 +17,10 @@ const (
 	VolumeStatusDetached VolumeStatus = "detached"
 	VolumeStatusDeleted  VolumeStatus = "deleted"
 
-	NiovaUserName   = "NIOVA_BLOCK_CP_AUTH_USERNAME"
-	NiovaUserSecret = "NIOVA_BLOCK_CP_AUTH_SECRET"
-	NiovaGossipKey  = "NIOVA_GOSSIP_KEY"
-	NiovaGossipPath = "NIOVA_GOSSIP_PATH"
+	NiovaUserName    = "NIOVA_BLOCK_CP_AUTH_USERNAME"
+	NiovaUserSecret  = "NIOVA_BLOCK_CP_AUTH_SECRET"
+	NiovaGossipKey   = "NIOVA_GOSSIP_KEY"
+	NiovaGossipPath  = "NIOVA_GOSSIP_PATH"
 	NiovaUblkUnified = "NIOVA_BLOCK_UBLK_UNIFIED"
 
 	FailureDomain = "failuredomain"
