@@ -56,13 +56,15 @@ func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string) (string, in
 		fmt.Sprintf("NIOVA_BLOCK_CP_AUTH_USERNAME=%s", os.Getenv(types.NiovaUserName)),
 		fmt.Sprintf("NIOVA_BLOCK_CP_AUTH_SECRET=%s", os.Getenv(types.NiovaUserSecret)),
 		fmt.Sprintf("NIOVA_BLOCK_UBLK_UNIFIED=%s", os.Getenv(types.NiovaUblkUnified)),
+		fmt.Sprintf("NIOVA_BLOCK_MDSVC_GET_CHUNKS_LIMIT=%s", os.Getenv(types.NiovaMdsvcChunkLimit)),
+		fmt.Sprintf("NIOVA_BLOCK_PROXY_TAG=%s", os.Getenv(types.NiovaProxyTag)),
 	)
 	cmd.Dir = workingDir
 	if err := cmd.Start(); err != nil {
 		return "", -1, status.Errorf(codes.Internal, "failed to start ublk: %v", err)
 	}
 
-	klog.Infof("ENV variables %s: %s and %s: %s, %s: %s and %s: %s, %s: %s ", types.NiovaGossipPath, os.Getenv(types.NiovaGossipPath), types.NiovaGossipKey, os.Getenv(types.NiovaGossipKey), types.NiovaUserName, os.Getenv(types.NiovaUserName), types.NiovaUserSecret, os.Getenv(types.NiovaUserSecret), types.NiovaUblkUnified, os.Getenv(types.NiovaUblkUnified))
+	klog.Infof("ENV variables %s: %s and %s: %s, %s: %s and %s: %s, %s: %s, %s: %s, %s: %s ", types.NiovaGossipPath, os.Getenv(types.NiovaGossipPath), types.NiovaGossipKey, os.Getenv(types.NiovaGossipKey), types.NiovaUserName, os.Getenv(types.NiovaUserName), types.NiovaUserSecret, os.Getenv(types.NiovaUserSecret), types.NiovaUblkUnified, os.Getenv(types.NiovaUblkUnified), types.NiovaMdsvcChunkLimit, os.Getenv(types.NiovaMdsvcChunkLimit), types.NiovaProxyTag, os.Getenv(types.NiovaProxyTag))
 	klog.Infof("Executing command: %s", cmd.String())
 
 	ublkDevicePath, err := waitForByUUIDLink(volumeID)
