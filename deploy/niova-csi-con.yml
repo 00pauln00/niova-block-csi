@@ -19,7 +19,7 @@ spec:
       hostPID: true
       containers:
         - name: niova-csi
-          image: paro1618/niova-csi:controller-v4
+          image: paro1618/niova-csi:controller-v11
           securityContext:
             privileged: true
             capabilities:
@@ -32,14 +32,26 @@ spec:
           imagePullPolicy: Always
           command: ["/bin/sh", "-c"]
           args:
-            - ulimit -l unlimited && exec /opt/niova/niova-block-csi-controller -driver-name=csi.niova.com -version=0.1.0 -node-id=$(NODE_ID) -endpoint=unix:///csi/custom2.sock -configpath=/etc/niova/gossipNodes -r ${RUN_ID}
+            - ulimit -l unlimited && exec /opt/niova/niova-block-csi-controller -driver-name=csi.niova.com -version=0.1.0 -node-id=$(NODE_ID) -endpoint=unix:///csi/custom2.sock -configpath=/etc/niova/gossipNodes -r ${RUN_ID} -Cplog=/niova-block/niova-csi.log
           env:
             - name: NODE_ID
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: RUN_ID
-              value: "5c587ba3-0f41-4476-b444-ffc6bba95ff0"
+              value: "dummy"
+            - name: NIOVA_GOSSIP_PATH
+              value: "/etc/niova/gossipNodes"
+            - name: NIOVA_GOSSIP_KEY
+              value: "dummy"
+            - name: NIOVA_BLOCK_CP_AUTH_USERNAME
+              value: "admin"
+            - name: NIOVA_BLOCK_CP_AUTH_SECRET
+              value: "test-admin-secret-123"
+            - name: NIOVA_BLOCK_MDSVC_GET_CHUNKS_LIMIT
+              value: "256"
+            - name: NIOVA_BLOCK_PROXY_TAG
+              value: "mdsvc-tidb"
           terminationMessagePath: /tmp/termination-log
           volumeMounts:
             - name: plugin-dir
@@ -50,6 +62,7 @@ spec:
               mountPath: /var/niova
             - name: niova-block
               mountPath: /niova-block
+              mountPropagation: Bidirectional
             - name: host-dev
               mountPath: /dev
               mountPropagation: HostToContainer
@@ -57,8 +70,6 @@ spec:
               mountPath: /sys
             - name: host-mount
               mountPath: /run
-            - name: lib-modules
-              mountPath: /lib/modules
             - name: kubelet-dir
               mountPath: /var/lib/kubelet/plugins
             - name: mountpoint-dir
@@ -74,14 +85,17 @@ spec:
 
         - name: csi-provisioner
           image: registry.k8s.io/sig-storage/csi-provisioner:v3.5.0
+          imagePullPolicy: Always
           args:
             - "--csi-address=/csi/custom2.sock"
+            - "--extra-create-metadata"
             - "--v=5"
           volumeMounts:
             - name: plugin-dir
               mountPath: /csi
         - name: csi-attacher
           image: registry.k8s.io/sig-storage/csi-attacher:v4.4.0
+          imagePullPolicy: Always
           args:
             - "--csi-address=/csi/custom2.sock"
             - "--v=5"
@@ -114,9 +128,6 @@ spec:
         - name: host-mount
           hostPath:
             path: /run
-        - name: lib-modules
-          hostPath:
-            path: /lib/modules
         - name: kubelet-dir
           hostPath:
             path: /var/lib/kubelet/plugins
