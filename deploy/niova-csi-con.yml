@@ -50,8 +50,6 @@ spec:
               value: "test-admin-secret-123"
             - name: NIOVA_BLOCK_MDSVC_GET_CHUNKS_LIMIT
               value: "256"
-            - name: NIOVA_BLOCK_PROXY_TAG
-              value: "mdsvc-tidb"
           terminationMessagePath: /tmp/termination-log
           volumeMounts:
             - name: plugin-dir
