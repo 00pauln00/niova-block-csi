@@ -11,6 +11,8 @@ RUN apt-get update && \
     libtool \
     pkg-config \
     liburing-dev \
+    liburing2 \
+    libaio-dev \
     git \
     wget \
     curl \

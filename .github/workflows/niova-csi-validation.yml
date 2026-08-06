@@ -1,0 +1,168 @@
+---
+name: niova-csi-validation
+
+'on':
+  workflow_dispatch:
+
+  push:
+    branches:
+      - ci-pipeline
+
+jobs:
+  csi-validation:
+    runs-on: ubuntu-24.04
+
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout niova-block-csi
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Update Submodules
+        run: |
+          git submodule init
+          git submodule sync --recursive
+          git submodule update --init --recursive
+
+      - name: apt update
+        run: sudo apt update
+
+      - name: dpkg / rpm prep
+        run: |
+          sudo -E apt-get install -y \
+            uuid-dev \
+            uuid \
+            libuuid1 \
+            libgcrypt20 \
+            openssl \
+            libssl-dev \
+            $(apt-cache search librocksdb | awk '{print $1}') \
+            uncrustify \
+            libasan5 \
+            libtsan0
+
+      # Install golang
+      - name: Install golang 1.20.3
+        run: |
+          sudo rm -rf /usr/bin/go &&
+          sudo wget https://golang.org/dl/go1.23.0.linux-amd64.tar.gz &&
+          sudo mkdir /home/runner/work/go &&
+          sudo tar -C /home/runner/work/go -xzf  go1.23.0.linux-amd64.tar.gz &&
+          export PATH=$PATH:/home/runner/work/go/go/bin &&
+          go version
+
+      - name: Verify sources
+        run: |
+          echo "Workspace: $GITHUB_WORKSPACE"
+          ls -la
+          ls -la niova-mdsvc || true
+
+      - name: Network details
+        run: |
+          hostname
+          ip addr show
+          curl -s ifconfig.me
+
+      - name: build libbacktrace
+        run: |
+          cd niova-mdsvc/modules/niova-pumicedb/modules/libbacktrace/ &&
+          ./configure &&
+          make && sudo make install
+
+      # Build niova-core for niova-raft
+      - name: Build niova-core
+        run: |
+          cd niova-mdsvc/modules/niova-pumicedb/modules/niova-raft/
+          cd modules/niova-core/
+          ./prepare.sh
+          ./configure \
+          --enable-devel \
+          --prefix=/home/runner/csi-workdir/cp-bin/
+          make -j 4
+          make -j 4 check
+          make install
+
+      - name: Build niova-raft
+        run: |
+          cd niova-mdsvc/modules/niova-pumicedb/modules/niova-raft/
+          ./prepare.sh
+          ./configure \
+          --with-niova=/home/runner/csi-workdir/cp-bin/ \
+          --prefix=/home/runner/csi-workdir/cp-bin/ \
+          --enable-devel
+          make clean
+          make -j 4
+          make install
+
+      - name: Build niova-pumicedb
+        run: |
+          cd niova-mdsvc/modules/niova-pumicedb/
+          ./prepare.sh
+          ./configure \
+          --enable-devel \
+          --with-niova=/home/runner/csi-workdir/cp-bin/ \
+          --prefix=/home/runner/csi-workdir/cp-bin/
+          make clean
+          make -j 4
+          make install
+
+      - name: Build niova-mdsvc using makefile
+        run: |
+          cd niova-mdsvc
+          export PATH=$PATH:/home/runner/work/go/go/bin
+          make -e DIR=/home/runner/csi-workdir/cp-bin/
+
+        env:
+          LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
+
+      - name: Build niova-block-csi using makefile
+        run: |
+          export PATH=$PATH:/home/runner/work/go/go/bin
+          make build \
+            -e BUILD_DIR=/home/runner/csi-workdir/csi-bin/
+
+      - name: Run CSI setup
+        run: |
+          chmod +x scripts/csi-setup.sh
+
+          ./scripts/csi-setup.sh \
+          /home/runner/csi-workdir \
+          "$GITHUB_WORKSPACE" \
+                             paro1618/niova-csi \
+                             v10
+
+      - name: Verify cluster
+        run: |
+          kubectl get nodes
+          kubectl get pods -A
+          minikube status
+
+      - name: Verify CSI pods
+        run: |
+          kubectl get pods -A
+          kubectl get pvc
+          kubectl get pv
+
+      - name: Collect logs
+        if: always()
+        run: |
+          mkdir -p logs
+
+          kubectl get pods -A > logs/pods.txt
+
+          kubectl logs deployment/niova-csi > logs/controller.log || true
+
+          NODE_POD=$(kubectl get pods \
+          -l app=niova-csi-node \
+          -o jsonpath='{.items[0].metadata.name}')
+
+          kubectl logs $NODE_POD > logs/node.log || true
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: csi-logs
+          path: logs
