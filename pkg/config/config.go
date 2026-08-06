@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -13,6 +14,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/niova-block-csi/pkg/types"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -32,6 +35,17 @@ func NewConfigManager(cpConfigPath string) *ConfigManager {
 	}
 }
 
+func StartAuthClient(raftuuid, raftconfig string) (*userClient.Client, func()) {
+	cfg := userClient.Config{
+		AppUUID:          uuid.New().String(),
+		RaftUUID:         raftuuid,
+		GossipConfigPath: raftconfig,
+	}
+
+	c, tearDown := userClient.New(cfg)
+	return c, tearDown
+}
+
 func NewK8sController() (*kubernetes.Clientset, error) {
 	// Use in-cluster config — works automatically when running inside Kubernetes
 	config, err := rest.InClusterConfig()
@@ -48,15 +62,18 @@ func NewK8sController() (*kubernetes.Clientset, error) {
 	return clientset, nil
 }
 
-func StartAuthClient(raftuuid, raftconfig string) (*userClient.Client, func()) {
-	cfg := userClient.Config{
-		AppUUID:          uuid.New().String(),
-		RaftUUID:         raftuuid,
-		GossipConfigPath: raftconfig,
+func (cm *ConfigManager) NodeExists(nodeID string) (bool, error) {
+	if cm.K8sClient == nil {
+		return false, fmt.Errorf("k8s client is nil")
 	}
-
-	c, tearDown := userClient.New(cfg)
-	return c, tearDown
+	_, err := cm.K8sClient.CoreV1().Nodes().Get(context.Background(), nodeID, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func (cm *ConfigManager) InitNiovaClient(c *cpClient.CliCFuncs, u *userClient.Client) error {
@@ -80,6 +97,7 @@ func (cm *ConfigManager) InitNiovaClient(c *cpClient.CliCFuncs, u *userClient.Cl
 func (cm *ConfigManager) UserLogin() error {
 	klog.Infof("Loging in the user with env-var %s  value %s is applied from environment", types.NiovaUserName, os.Getenv(types.NiovaUserName))
 	klog.Infof("Loging in the user with env-var %s value %s is applied from environment", types.NiovaUserSecret, os.Getenv(types.NiovaUserSecret))
+	klog.Infof("Loging in the user with env-var %s value %s is applied from environment", types.NiovaMdsvcChunkLimit, os.Getenv(types.NiovaMdsvcChunkLimit))
 	token, err := cm.Controller.UserClient.Login(os.Getenv(types.NiovaUserName), os.Getenv(types.NiovaUserSecret))
 	if err != nil {
 		klog.Errorf("Failed to Login admin user", err)
@@ -91,7 +109,7 @@ func (cm *ConfigManager) UserLogin() error {
 }
 
 func (cm *ConfigManager) VerifyTokenExpiryAndReLogin(exp error) error {
-	if errors.Is(exp, jwt.ErrTokenExpired) || strings.Contains(exp.Error(), "token is expired") {
+	if errors.Is(exp, jwt.ErrTokenExpired) || strings.Contains(exp.Error(), "token is expired") || strings.Contains(exp.Error(), "Invalid Token") {
 		err := cm.UserLogin()
 		if err != nil {
 			return err
@@ -141,13 +159,14 @@ func (cm *ConfigManager) RetryAuth(fn func() error) error {
 	return fmt.Errorf("operation failed after %d retries", types.MAX_RETRY)
 }
 
-func (cm *ConfigManager) AllocVdev(requiredSize int64, filter, entityID, pfsId string) (string, error) {
+func (cm *ConfigManager) AllocVdev(name string, requiredSize int64, filter, entityID, pfsId string) (string, error) {
 	cm.Mutex.RLock()
 	defer cm.Mutex.RUnlock()
 	klog.Infof("Allocate vdev with failure domain: %s", entityID)
 	// TODO: NumReplica should be passed from PVC file.
 	Vdev := &ctlplfl.VdevReq{
 		Vdev: &ctlplfl.VdevConfig{
+			Name:       name,
 			Size:       requiredSize,
 			DataBlkCnt: 1,
 			PFSID:      pfsId,
@@ -206,6 +225,15 @@ func (cm *ConfigManager) GetVolume(volumeID string) (ctlplfl.VdevConfig, error) 
 		return ctlplfl.VdevConfig{}, err
 	}
 	return vdevcfg, nil
+}
+
+// GetVolumeByName looks up a vdev by its CSI volume name instead of its ID.
+// The control plane's GetReq.ID accepts either: a UUID is looked up
+// directly, anything else is resolved as a name via a server-side reverse
+// index. Returns an error whose message is exactly "vdev not found" when
+// no vdev with that name exists.
+func (cm *ConfigManager) GetVolumeByName(name string) (ctlplfl.VdevConfig, error) {
+	return cm.GetVolume(name)
 }
 
 func (cm *ConfigManager) ListVolumes() ([]ctlplfl.VdevConfig, error) {

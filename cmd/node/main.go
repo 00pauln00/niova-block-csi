@@ -7,13 +7,16 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/niova-block-csi/pkg/config"
 	"github.com/niova-block-csi/pkg/driver"
 	"k8s.io/klog/v2"
 )
 
 var (
 	endpoint   = flag.String("endpoint", "unix:///var/lib/kubelet/plugins/niova-block-csi/csi.sock", "CSI endpoint")
+	raftID     = flag.String("r", "", "pass the raft uuid")
 	nodeID     = flag.String("node-id", "", "Node ID")
+	ConfigPath = flag.String("configpath", "./gossipNodes", "Path to gossip configuration file")
 	driverName = flag.String("driver-name", "niova-block-csi", "Name of the CSI driver")
 	version    = flag.String("version", "v1.0.0", "Version of the CSI driver")
 )
@@ -33,13 +36,17 @@ func main() {
 	klog.Infof("Starting CSI node plugin for driver %s version %s", *driverName, *version)
 	klog.Infof("Node ID: %s", *nodeID)
 	klog.Infof("Endpoint: %s", *endpoint)
+	klog.Infof("ControlPlane config path: %s", *ConfigPath)
+	klog.Infof("Raft ID: %s", *raftID)
+
+	// Create config manager
+	configManager := config.NewConfigManager(*ConfigPath)
 
 	// Create CSI driver
-	csiDriver := driver.NewCSIDriver(*driverName, *version, *nodeID, *endpoint, nil)
+	csiDriver := driver.NewCSIDriver(*driverName, *version, *nodeID, *endpoint, configManager)
 
 	// Setup node server
 	csiDriver.SetupNodeServer()
-
 	// Setup identity server
 	csiDriver.SetupIdentityServer()
 

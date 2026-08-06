@@ -17,14 +17,16 @@ const (
 	VolumeStatusDetached VolumeStatus = "detached"
 	VolumeStatusDeleted  VolumeStatus = "deleted"
 
-	NiovaUserName   = "NIOVA_BLOCK_CP_AUTH_USERNAME"
-	NiovaUserSecret = "NIOVA_BLOCK_CP_AUTH_SECRET"
-	NiovaGossipKey  = "NIOVA_GOSSIP_KEY"
-	NiovaGossipPath = "NIOVA_GOSSIP_PATH"
+	NiovaUserName        = "NIOVA_BLOCK_CP_AUTH_USERNAME"
+	NiovaUserSecret      = "NIOVA_BLOCK_CP_AUTH_SECRET"
+	NiovaGossipKey       = "NIOVA_GOSSIP_KEY"
+	NiovaGossipPath      = "NIOVA_GOSSIP_PATH"
+	NiovaUblkUnified     = "NIOVA_BLOCK_UBLK_UNIFIED"
+	NiovaMdsvcChunkLimit = "NIOVA_BLOCK_MDSVC_GET_CHUNKS_LIMIT"
 
-	FailureDomain = "niova.com/failuredomain"
-	EntityID      = "niova.com/EntityId"
-	PfsID         = "niova.com/PfsID"
+	FailureDomain = "failuredomain"
+	EntityID      = "entityID"
+	PfsID         = "pfsId"
 	MAX_RETRY     = 2
 )
 
