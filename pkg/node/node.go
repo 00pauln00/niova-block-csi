@@ -10,6 +10,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/google/uuid"
+	"github.com/niova-block-csi/pkg/config"
 	"github.com/niova-block-csi/pkg/types"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -18,17 +19,18 @@ import (
 
 type NodeServer struct {
 	nodeID       string
-	node         *types.Node
+	Node         *types.Node
 	ublkManager  *UblkManager
 	mountManager *MountManager
 	mutex        sync.RWMutex
 	caps         []*csi.NodeServiceCapability
+	config       *config.ConfigManager
 }
 
-func NewNodeServer(nodeID string) *NodeServer {
+func NewNodeServer(nodeID string, configManager *config.ConfigManager) *NodeServer {
 	return &NodeServer{
 		nodeID: nodeID,
-		node: &types.Node{
+		Node: &types.Node{
 			VolMap: make(map[string]*types.NodeVolume),
 		},
 		ublkManager:  NewUblkManager(),
@@ -49,6 +51,7 @@ func NewNodeServer(nodeID string) *NodeServer {
 				},
 			},
 		},
+		config: configManager,
 	}
 }
 
@@ -84,7 +87,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	// if this volume is already staged, return success.
 	// Only a read lock is needed here since we are not modifying the map.
 	ns.mutex.RLock()
-	_, alreadyStaged := ns.node.VolMap[volumeID]
+	_, alreadyStaged := ns.Node.VolMap[volumeID]
 	ns.mutex.RUnlock()
 	if alreadyStaged {
 		klog.Infof("NodeStageVolume: volume %s is already staged, returning success", volumeID)
@@ -132,7 +135,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	// Write lock: only the map insertion needs exclusive access.
 	// All the expensive work above runs concurrently for different volumes.
 	ns.mutex.Lock()
-	ns.node.VolMap[volumeID] = nodeVolume
+	ns.Node.VolMap[volumeID] = nodeVolume
 	ns.mutex.Unlock()
 
 	klog.Infof("Successfully staged volume %s with ublk device %s at %s", volumeID, ublkDevicePath, stagingPath)
@@ -154,7 +157,7 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	stagingPath := req.GetStagingTargetPath()
 
 	ns.mutex.RLock()
-	nodeVol, exists := ns.node.VolMap[volumeID]
+	nodeVol, exists := ns.Node.VolMap[volumeID]
 	ns.mutex.RUnlock()
 
 	if !exists {
@@ -183,7 +186,7 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 
 	// Write lock: remove the entry from the shared map.
 	ns.mutex.Lock()
-	delete(ns.node.VolMap, volumeID)
+	delete(ns.Node.VolMap, volumeID)
 	ns.mutex.Unlock()
 
 	klog.Infof("Successfully unstaged volume %s", volumeID)
@@ -210,7 +213,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	stagingPath := req.GetStagingTargetPath()
 
 	ns.mutex.RLock()
-	nodeVol, exists := ns.node.VolMap[volumeID]
+	nodeVol, exists := ns.Node.VolMap[volumeID]
 	ns.mutex.RUnlock()
 
 	if !exists {
@@ -263,7 +266,7 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	targetPath := req.GetTargetPath()
 
 	ns.mutex.RLock()
-	nodeVol, exists := ns.node.VolMap[volumeID]
+	nodeVol, exists := ns.Node.VolMap[volumeID]
 	ns.mutex.RUnlock()
 
 	if !exists {
@@ -309,7 +312,7 @@ func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 	}
 
 	ns.mutex.RLock()
-	nodeVol, ok := ns.node.VolMap[req.GetVolumeId()]
+	nodeVol, ok := ns.Node.VolMap[req.GetVolumeId()]
 	ns.mutex.RUnlock()
 
 	if ok && nodeVol.VolumeMode == types.BLOCK_MODE {
