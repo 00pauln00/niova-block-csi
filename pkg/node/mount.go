@@ -16,6 +16,7 @@ const (
 	FilesystemTypeExt4    = "ext4"
 	FilesystemTypeExt3    = "ext3"
 	FilesystemTypeXFS     = "xfs"
+	FileSystemTypeBtrfs   = "btrfs"
 	FilesystemTypeUnknown = "unknown"
 )
 
@@ -343,6 +344,8 @@ func (mm *MountManager) formatDevice(devicePath, fsType string) error {
 		cmd = exec.Command("mkfs.xfs", "-f", devicePath)
 	case FilesystemTypeExt3:
 		cmd = exec.Command("mkfs.ext3", "-F", devicePath)
+	case FileSystemTypeBtrfs:
+		cmd = exec.Command("mkfs.btrfs", "-f", devicePath)
 	default:
 		return fmt.Errorf("unsupported filesystem type: %s", fsType)
 	}

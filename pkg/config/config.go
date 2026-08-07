@@ -274,7 +274,7 @@ func (cm *ConfigManager) UpdateNodeVolumeMap(node *types.Node) error {
 		// Update fields from controller config
 		nv.VolID, err = uuid.Parse(v.ID)
 		if err != nil {
-                	klog.Errorf("Failed to parse volume ID %s: %v", v.ID, err)
+			klog.Errorf("Failed to parse volume ID %s: %v", v.ID, err)
 			return err
 		}
 	}
