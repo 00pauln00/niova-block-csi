@@ -24,7 +24,7 @@ type CSIDriver struct {
 	configManager *config.ConfigManager
 
 	controllerServer *controller.ControllerServer
-	nodeServer       *node.NodeServer
+	NodeServer       *node.NodeServer
 	identityServer   *IdentityServer
 
 	server *grpc.Server
@@ -47,7 +47,7 @@ func (d *CSIDriver) SetupControllerServer() {
 
 func (d *CSIDriver) SetupNodeServer() {
 	klog.Infof("Setting up node server")
-	d.nodeServer = node.NewNodeServer(d.nodeID)
+	d.NodeServer = node.NewNodeServer(d.nodeID, d.configManager)
 }
 
 func (d *CSIDriver) SetupIdentityServer() {
@@ -95,8 +95,8 @@ func (d *CSIDriver) Run(ctx context.Context) error {
 	}
 
 	// Register node server if configured
-	if d.nodeServer != nil {
-		csi.RegisterNodeServer(d.server, d.nodeServer)
+	if d.NodeServer != nil {
+		csi.RegisterNodeServer(d.server, d.NodeServer)
 		klog.Info("Node server registered")
 	}
 

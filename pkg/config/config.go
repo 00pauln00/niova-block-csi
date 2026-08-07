@@ -251,3 +251,33 @@ func (cm *ConfigManager) ListVolumes() ([]ctlplfl.VdevConfig, error) {
 	}
 	return vdevcfgs, nil
 }
+
+func (cm *ConfigManager) UpdateNodeVolumeMap(node *types.Node) error {
+	vdevcfgs, err := cm.ListVolumes()
+	if err != nil {
+		return err
+	}
+
+	if node.VolMap == nil {
+		node.VolMap = make(map[string]*types.NodeVolume)
+	}
+
+	for _, v := range vdevcfgs {
+		volID := v.ID
+
+		nv, exists := node.VolMap[volID]
+		if !exists {
+			nv = &types.NodeVolume{}
+			node.VolMap[volID] = nv
+		}
+
+		// Update fields from controller config
+		nv.VolID, err = uuid.Parse(v.ID)
+		if err != nil {
+                	klog.Errorf("Failed to parse volume ID %s: %v", v.ID, err)
+			return err
+		}
+	}
+
+	return nil
+}
