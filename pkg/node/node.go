@@ -84,10 +84,15 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid volume size: %v", err))
 	}
 
-	// if this volume is already staged, return success.
+	// If this volume is already staged with a live ublk device, return
+	// success. VolMap can also contain a bare stub entry for this volume ID
+	// (VolID only, no UblkPath) planted by ConfigManager.UpdateNodeVolumeMap
+	// syncing from the control plane at startup — that's not actually
+	// staged locally, so it must not short-circuit here.
 	// Only a read lock is needed here since we are not modifying the map.
 	ns.mutex.RLock()
-	_, alreadyStaged := ns.Node.VolMap[volumeID]
+	existing, alreadyStaged := ns.Node.VolMap[volumeID]
+	alreadyStaged = alreadyStaged && existing.UblkPath != ""
 	ns.mutex.RUnlock()
 	if alreadyStaged {
 		klog.Infof("NodeStageVolume: volume %s is already staged, returning success", volumeID)
@@ -111,7 +116,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		// can take seconds; no shared state, no lock needed).
 		if err := ns.mountManager.FormatAndMountDevice(ublkDevicePath, stagingPath, fsType); err != nil {
 			// Cleanup ublk device on failure
-			ns.ublkManager.DeleteUblkDevice(volumeID, ublkDevicePath, ublkpid)
+			ns.ublkManager.DeleteUblkDevice(volumeID, ublkDevicePath)
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to mount device: %v", err))
 		}
 	}
@@ -120,7 +125,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	volUUID, err := uuid.Parse(volumeID)
 	if err != nil {
 		klog.Errorf("Failed to parse volume ID %s: %v", volumeID, err)
-		ns.ublkManager.DeleteUblkDevice(volumeID, ublkDevicePath, ublkpid)
+		ns.ublkManager.DeleteUblkDevice(volumeID, ublkDevicePath)
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid volume ID format: %v", err))
 	}
 
@@ -174,7 +179,7 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 
 	// Delete ublk device if it exists
 	if nodeVol.UblkPath != "" {
-		if err := ns.ublkManager.DeleteUblkDevice(volumeID, nodeVol.UblkPath, nodeVol.UblkPid); err != nil {
+		if err := ns.ublkManager.DeleteUblkDevice(volumeID, nodeVol.UblkPath); err != nil {
 			klog.Errorf("Failed to delete ublk device %s: %v", nodeVol.UblkPath, err)
 		}
 	}
