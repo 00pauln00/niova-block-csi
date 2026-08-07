@@ -38,8 +38,20 @@ func NewUblkManager() *UblkManager {
 // /dev/disk/by-uuid/<volumeID> symlink created by 61-niova-ublk.rules.
 func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string) (string, int, error) {
 	klog.Infof("Creating ublk device for volume %s", volumeID)
+	unitName := "niova-ublk-" + volumeID
 
 	args := []string{
+		"--unit=" + unitName,
+		"--property=Restart=on-failure",
+		"--property=RestartSec=5",
+		"--setenv=LD_LIBRARY_PATH=" + ldLibraryPath,
+		"--setenv=NIOVA_GOSSIP_PATH=" + os.Getenv(types.NiovaGossipPath),
+		"--setenv=NIOVA_GOSSIP_KEY=" + os.Getenv(types.NiovaGossipKey),
+		"--setenv=NIOVA_BLOCK_CP_AUTH_USERNAME=" + os.Getenv(types.NiovaUserName),
+		"--setenv=NIOVA_BLOCK_CP_AUTH_SECRET=" + os.Getenv(types.NiovaUserSecret),
+		"--setenv=NIOVA_BLOCK_UBLK_UNIFIED=" + os.Getenv(types.NiovaUblkUnified),
+		"--setenv=NIOVA_BLOCK_MDSVC_GET_CHUNKS_LIMIT=" + os.Getenv(types.NiovaMdsvcChunkLimit),
+		um.ublkBinary,
 		"-t", "cp",
 		"-v", volumeID,
 		"-u", volumeID,
@@ -48,16 +60,17 @@ func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string) (string, in
 		"-T",
 	}
 
-	cmd := exec.Command(um.ublkBinary, args...)
-	cmd.Env = append(cmd.Env,
-		fmt.Sprintf("LD_LIBRARY_PATH=%s", ldLibraryPath),
-		fmt.Sprintf("NIOVA_GOSSIP_PATH=%s", os.Getenv(types.NiovaGossipPath)),
-		fmt.Sprintf("NIOVA_GOSSIP_KEY=%s", os.Getenv(types.NiovaGossipKey)),
-		fmt.Sprintf("NIOVA_BLOCK_CP_AUTH_USERNAME=%s", os.Getenv(types.NiovaUserName)),
-		fmt.Sprintf("NIOVA_BLOCK_CP_AUTH_SECRET=%s", os.Getenv(types.NiovaUserSecret)),
-		fmt.Sprintf("NIOVA_BLOCK_UBLK_UNIFIED=%s", os.Getenv(types.NiovaUblkUnified)),
-		fmt.Sprintf("NIOVA_BLOCK_MDSVC_GET_CHUNKS_LIMIT=%s", os.Getenv(types.NiovaMdsvcChunkLimit)),
-	)
+	/*	cmd := exec.Command(um.ublkBinary, args...)
+		cmd.Env = append(cmd.Env,
+			fmt.Sprintf("LD_LIBRARY_PATH=%s", ldLibraryPath),
+			fmt.Sprintf("NIOVA_GOSSIP_PATH=%s", os.Getenv(types.NiovaGossipPath)),
+			fmt.Sprintf("NIOVA_GOSSIP_KEY=%s", os.Getenv(types.NiovaGossipKey)),
+			fmt.Sprintf("NIOVA_BLOCK_CP_AUTH_USERNAME=%s", os.Getenv(types.NiovaUserName)),
+			fmt.Sprintf("NIOVA_BLOCK_CP_AUTH_SECRET=%s", os.Getenv(types.NiovaUserSecret)),
+			fmt.Sprintf("NIOVA_BLOCK_UBLK_UNIFIED=%s", os.Getenv(types.NiovaUblkUnified)),
+			fmt.Sprintf("NIOVA_BLOCK_MDSVC_GET_CHUNKS_LIMIT=%s", os.Getenv(types.NiovaMdsvcChunkLimit)),
+		)*/
+	cmd := exec.Command("systemd-run", args...)
 	cmd.Dir = workingDir
 	if err := cmd.Start(); err != nil {
 		return "", -1, status.Errorf(codes.Internal, "failed to start ublk: %v", err)
@@ -68,6 +81,7 @@ func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string) (string, in
 
 	ublkDevicePath, err := waitForByUUIDLink(volumeID)
 	if err != nil {
+		exec.Command("systemctl", "stop", unitName+".service").Run()
 		cmd.Process.Kill()
 		return "", -1, err
 	}
@@ -83,7 +97,9 @@ func (um *UblkManager) DeleteUblkDevice(volumeID, ublkDevicePath string, ublkPid
 	if err != nil {
 		return fmt.Errorf("failed to delete ublk device: %v", err)
 	}
-
+	unit := "niova-ublk-" + volumeID + ".service"
+	exec.Command("systemctl", "stop", unit).Run()
+	exec.Command("systemctl", "reset-failed", unit).Run()
 	klog.Infof("Successfully deleted ublk device %s for volume %s", ublkDevicePath, volumeID)
 	return nil
 }
