@@ -85,10 +85,11 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 
 	// If this volume is already staged with a live ublk device, return
-	// success. VolMap can also contain a bare stub entry for this volume ID
-	// (VolID only, no UblkPath) planted by ConfigManager.UpdateNodeVolumeMap
-	// syncing from the control plane at startup — that's not actually
-	// staged locally, so it must not short-circuit here.
+	// success. Guards against ConfigManager.UpdateNodeVolumeMap having
+	// failed to confirm a live backend for this volume ID (e.g. the udev
+	// symlink check raced with niova-ublk still coming up) and left a bare
+	// VolID-only entry behind — that's not actually staged locally, so it
+	// must not short-circuit here.
 	// Only a read lock is needed here since we are not modifying the map.
 	ns.mutex.RLock()
 	existing, alreadyStaged := ns.Node.VolMap[volumeID]
@@ -170,18 +171,23 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 		return &csi.NodeUnstageVolumeResponse{}, nil
 	}
 
-	// Unmount from staging path
-	if nodeVol.VolumeMode == types.MOUNT_MODE {
-		if err := ns.mountManager.Unmount(stagingPath); err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to unmount staging path: %v", err))
-		}
+	// Unmount from staging path. Called unconditionally rather than gated
+	// on nodeVol.VolumeMode: VolMap can hold a bare control-plane stub (see
+	// ConfigManager.UpdateNodeVolumeMap) with no VolumeMode recorded, and
+	// Unmount is already a safe no-op when nothing is mounted there.
+	if err := ns.mountManager.Unmount(stagingPath); err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to unmount staging path: %v", err))
 	}
 
-	// Delete ublk device if it exists
-	if nodeVol.UblkPath != "" {
-		if err := ns.ublkManager.DeleteUblkDevice(volumeID, nodeVol.UblkPath); err != nil {
-			klog.Errorf("Failed to delete ublk device %s: %v", nodeVol.UblkPath, err)
-		}
+	// Delete the ublk device. Fall back to the deterministic udev symlink
+	// path when UblkPath wasn't recorded (same stub scenario as above), so
+	// cleanup still runs instead of leaking the host-side systemd unit.
+	ublkPath := nodeVol.UblkPath
+	if ublkPath == "" {
+		ublkPath = types.UblkByUUIDPath(volumeID)
+	}
+	if err := ns.ublkManager.DeleteUblkDevice(volumeID, ublkPath); err != nil {
+		klog.Errorf("Failed to delete ublk device %s: %v", ublkPath, err)
 	}
 
 	// Clean up staging path
@@ -288,7 +294,20 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	}
 
 	if exists {
-		if nodeVol.VolumeMode == types.BLOCK_MODE {
+		// Determine block vs. filesystem mode from the on-disk shape of
+		// targetPath rather than the stored VolumeMode: VolMap can hold a
+		// bare control-plane stub (see ConfigManager.UpdateNodeVolumeMap)
+		// with no VolumeMode recorded. NodePublishVolume always creates a
+		// plain file for block mode (bind-mounting the ublk device onto
+		// it) and a directory for filesystem mode, so stat is authoritative
+		// regardless of what VolMap knows.
+		isDir := false
+		if fi, err := os.Stat(targetPath); err == nil {
+			isDir = fi.IsDir()
+		} else if !os.IsNotExist(err) {
+			klog.Warningf("Failed to stat target path %s to determine volume mode: %v", targetPath, err)
+		}
+		if !isDir {
 			_ = os.Remove(targetPath)
 		} else {
 			if err := ns.mountManager.CleanupMountPoint(targetPath); err != nil {

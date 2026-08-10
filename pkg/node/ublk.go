@@ -128,7 +128,7 @@ func (um *UblkManager) extractUblkID(ublkDevicePath string) string {
 // The symlink appearing is an implicit readiness signal: niova-ublk only fires
 // the uevent after niova_ublk_start() completes successfully.
 func waitForByUUIDLink(volumeID string) (string, error) {
-	path := "/dev/disk/by-uuid/" + volumeID
+	path := types.UblkByUUIDPath(volumeID)
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		if _, err := os.Lstat(path); err == nil {
