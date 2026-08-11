@@ -252,6 +252,14 @@ func (cm *ConfigManager) ListVolumes() ([]ctlplfl.VdevConfig, error) {
 	return vdevcfgs, nil
 }
 
+// UpdateNodeVolumeMap seeds node.VolMap at node-plugin startup from the
+// control plane's vdev list. ListVolumes is cluster-wide — the control
+// plane doesn't (yet) track which node a vdev is attached to — so most of
+// what it returns has nothing to do with this node. The deterministic udev
+// symlink niova-ublk creates (types.UblkByUUIDPath) is used as local ground
+// truth instead: only a vdev whose ublk backend is actually running on this
+// host resolves that path, so that's what tells us it belongs here. Vdevs
+// that don't resolve are skipped rather than added as bare stubs.
 func (cm *ConfigManager) UpdateNodeVolumeMap(node *types.Node) error {
 	vdevcfgs, err := cm.ListVolumes()
 	if err != nil {
@@ -265,6 +273,11 @@ func (cm *ConfigManager) UpdateNodeVolumeMap(node *types.Node) error {
 	for _, v := range vdevcfgs {
 		volID := v.ID
 
+		ublkPath := types.UblkByUUIDPath(volID)
+		if _, err := os.Stat(ublkPath); err != nil {
+			continue
+		}
+
 		nv, exists := node.VolMap[volID]
 		if !exists {
 			nv = &types.NodeVolume{}
@@ -274,9 +287,10 @@ func (cm *ConfigManager) UpdateNodeVolumeMap(node *types.Node) error {
 		// Update fields from controller config
 		nv.VolID, err = uuid.Parse(v.ID)
 		if err != nil {
-                	klog.Errorf("Failed to parse volume ID %s: %v", v.ID, err)
+			klog.Errorf("Failed to parse volume ID %s: %v", v.ID, err)
 			return err
 		}
+		nv.UblkPath = ublkPath
 	}
 
 	return nil

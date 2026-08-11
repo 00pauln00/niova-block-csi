@@ -48,3 +48,13 @@ type NodeVolume struct {
 type Node struct {
 	VolMap map[string]*NodeVolume `yaml:"volMap" json:"volMap"`
 }
+
+// UblkByUUIDPath returns the deterministic device path that
+// 61-niova-ublk.rules creates as /dev/disk/by-uuid/<volumeID> once the
+// niova-ublk backend for that volume is ready. It's used both to wait for a
+// freshly-started backend to come up and, at node-plugin startup, as local
+// ground truth for which control-plane-known volumes actually have a live
+// backend running on this node.
+func UblkByUUIDPath(volumeID string) string {
+	return "/dev/disk/by-uuid/" + volumeID
+}

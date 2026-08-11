@@ -21,6 +21,7 @@ require (
 	github.com/00pauln00/niova-lookout v0.0.0-20251206193347-d24de0d14683 // indirect
 	github.com/00pauln00/niova-pumicedb/go v0.0.0-20250825081145-6cf0dcb3bbb9 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
+	github.com/coreos/go-systemd/v22 v22.7.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
