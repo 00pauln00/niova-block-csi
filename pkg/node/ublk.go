@@ -48,6 +48,7 @@ func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string) (string, in
 		"-q", QUEUEDEPTH,
 		"-b", MAXBUFSIZE,
 		"-T",
+		"-r",
 	}
 	env := []string{
 		fmt.Sprintf("LD_LIBRARY_PATH=%s", ldLibraryPath),
@@ -83,16 +84,27 @@ func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string) (string, in
 func (um *UblkManager) DeleteUblkDevice(volumeID, ublkDevicePath string) error {
 	klog.Infof("Deleting ublk device %s for volume %s", ublkDevicePath, volumeID)
 
+	// Resolve the by-uuid symlink to its ublkbN id before touching the
+	// unit: once niova-ublk exits (next step), a udev "remove" event can
+	// take the symlink down with it, so resolving afterwards would race.
+	// `ublk del` itself (UBLK_CMD_STOP_DEV + UBLK_CMD_DEL_DEV) doesn't
+	// care whether the daemon is still alive, already exited, or sitting
+	// quiesced mid-recovery, so it's safe to run after stopUblkUnit.
+	var id string
+	if ublkDevicePath != "" {
+		var err error
+		id, err = resolveUblkID(ublkDevicePath)
+		if err != nil {
+			return fmt.Errorf("failed to resolve ublk id for %s: %v", ublkDevicePath, err)
+		}
+	}
+
 	if err := stopUblkUnit(volumeID); err != nil {
 		return fmt.Errorf("failed to delete ublk device: %v", err)
 	}
 
-	if ublkDevicePath != "" {
+	if id != "" {
 		klog.Infof("Deleting the ublk %s", ublkDevicePath)
-		id, err := resolveUblkID(ublkDevicePath)
-		if err != nil {
-			return fmt.Errorf("failed to resolve ublk id for %s: %v", ublkDevicePath, err)
-		}
 		dublk := exec.Command("ublk", "del", "-n", id)
 		if err := dublk.Run(); err != nil {
 			return fmt.Errorf("failed to delete ublk %s: %v", ublkDevicePath, err)

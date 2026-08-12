@@ -46,6 +46,16 @@ func startUblkUnit(volumeID, binary string, args []string, env []string, dir str
 		dbus.PropSlice(ublkSystemdSlice),
 		{Name: "Environment", Value: godbus.MakeVariant(env)},
 		{Name: "WorkingDirectory", Value: godbus.MakeVariant(dir)},
+		// Bring a crashed daemon back on its own: with niova-ublk run
+		// with -r (UBLK_F_USER_RECOVERY), the kernel keeps the ublk
+		// device quiesced-and-waiting across a daemon death instead of
+		// tearing it down, so a respawn is what actually lets the
+		// volume recover instead of hanging forever. Rate-limited so a
+		// persistently-crashing daemon doesn't loop forever.
+		{Name: "Restart", Value: godbus.MakeVariant("on-failure")},
+		{Name: "RestartUSec", Value: godbus.MakeVariant(uint64(2 * time.Second / time.Microsecond))},
+		{Name: "StartLimitIntervalUSec", Value: godbus.MakeVariant(uint64(60 * time.Second / time.Microsecond))},
+		{Name: "StartLimitBurst", Value: godbus.MakeVariant(uint32(5))},
 	}
 
 	resultChan := make(chan string, 1)
