@@ -105,8 +105,11 @@ func (um *UblkManager) DeleteUblkDevice(volumeID, ublkDevicePath string) error {
 
 	if id != "" {
 		klog.Infof("Deleting the ublk %s", ublkDevicePath)
-		dublk := exec.Command("ublk", "del", "-n", id)
-		if err := dublk.Run(); err != nil {
+		// Run on the host via systemd, not exec.Command in this
+		// container: the ublk CLI's runtime (libublksrv/liburing) isn't
+		// reliably available/resolvable inside the node-plugin image,
+		// while the host environment niova-ublk itself runs in is.
+		if err := runHostCommand(volumeID, "ublk", []string{"del", "-n", id}); err != nil {
 			return fmt.Errorf("failed to delete ublk %s: %v", ublkDevicePath, err)
 		}
 	}
