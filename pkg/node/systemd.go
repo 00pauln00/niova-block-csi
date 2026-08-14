@@ -39,6 +39,14 @@ func startUblkUnit(volumeID, binary string, args []string, env []string, dir str
 	unitName := ublkUnitName(volumeID)
 	execArgs := append([]string{binary}, args...)
 
+	// Best-effort: a prior instance of this unit that exhausted
+	// StartLimitBurst (see Restart= below) is left in `failed` state by
+	// systemd until explicitly acknowledged -- StartTransientUnit then
+	// refuses to reuse the name ("already loaded or has a fragment
+	// file"), permanently blocking this volume from ever starting again.
+	// A unit that isn't failed (or doesn't exist yet) makes this a no-op.
+	_ = conn.ResetFailedUnitContext(ctx, unitName)
+
 	props := []dbus.Property{
 		dbus.PropDescription(fmt.Sprintf("niova-ublk daemon for volume %s", volumeID)),
 		dbus.PropType("simple"),
@@ -54,7 +62,7 @@ func startUblkUnit(volumeID, binary string, args []string, env []string, dir str
 		// persistently-crashing daemon doesn't loop forever.
 		{Name: "Restart", Value: godbus.MakeVariant("on-failure")},
 		{Name: "RestartUSec", Value: godbus.MakeVariant(uint64(2 * time.Second / time.Microsecond))},
-		{Name: "StartLimitIntervalUSec", Value: godbus.MakeVariant(uint64(60 * time.Second / time.Microsecond))},
+		{Name: "StartLimitIntervalUSec", Value: godbus.MakeVariant(uint64(5 * time.Minute / time.Microsecond))},
 		{Name: "StartLimitBurst", Value: godbus.MakeVariant(uint32(5))},
 	}
 
