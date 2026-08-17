@@ -67,7 +67,7 @@ func main() {
 
 	// Setup node server
 	csiDriver.SetupNodeServer()
-	// update the node volume 
+	// update the node volume
 	err = configManager.UpdateNodeVolumeMap(csiDriver.NodeServer.Node)
 	if err != nil {
 		klog.Errorf("Failed to Update NodeVolume Map %v", err)
