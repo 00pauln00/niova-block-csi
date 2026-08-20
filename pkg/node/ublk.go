@@ -23,11 +23,13 @@ var (
 
 type UblkManager struct {
 	ublkBinary string
+	ClientID   string
 }
 
-func NewUblkManager() *UblkManager {
+func NewUblkManager(clientid string) *UblkManager {
 	return &UblkManager{
 		ublkBinary: "niova-ublk", // Assuming niova-ublk is in PATH
+		ClientID:   clientid,
 	}
 }
 
@@ -44,7 +46,7 @@ func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string, readOnly bo
 	args := []string{
 		"-t", "cp",
 		"-v", volumeID,
-		"-u", volumeID,
+		"-u", um.ClientID,
 		"-q", QUEUEDEPTH,
 		"-b", MAXBUFSIZE,
 		"-T",

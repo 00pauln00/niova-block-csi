@@ -20,6 +20,7 @@ type CSIDriver struct {
 	name          string
 	version       string
 	nodeID        string
+	clientID      string
 	endpoint      string
 	configManager *config.ConfigManager
 
@@ -30,11 +31,12 @@ type CSIDriver struct {
 	server *grpc.Server
 }
 
-func NewCSIDriver(name, version, nodeID, endpoint string, configManager *config.ConfigManager) *CSIDriver {
+func NewCSIDriver(name, version, nodeID, clientid, endpoint string, configManager *config.ConfigManager) *CSIDriver {
 	return &CSIDriver{
 		name:          name,
 		version:       version,
 		nodeID:        nodeID,
+		clientID:      clientid,
 		endpoint:      endpoint,
 		configManager: configManager,
 	}
@@ -47,7 +49,7 @@ func (d *CSIDriver) SetupControllerServer() {
 
 func (d *CSIDriver) SetupNodeServer() {
 	klog.Infof("Setting up node server")
-	d.NodeServer = node.NewNodeServer(d.nodeID, d.configManager)
+	d.NodeServer = node.NewNodeServer(d.nodeID, d.clientID, d.configManager)
 }
 
 func (d *CSIDriver) SetupIdentityServer() {

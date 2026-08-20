@@ -27,13 +27,13 @@ type NodeServer struct {
 	config       *config.ConfigManager
 }
 
-func NewNodeServer(nodeID string, configManager *config.ConfigManager) *NodeServer {
+func NewNodeServer(nodeID string, clientid string, configManager *config.ConfigManager) *NodeServer {
 	return &NodeServer{
 		nodeID: nodeID,
 		Node: &types.Node{
 			VolMap: make(map[string]*types.NodeVolume),
 		},
-		ublkManager:  NewUblkManager(),
+		ublkManager:  NewUblkManager(clientid),
 		mountManager: NewMountManager(),
 		caps: []*csi.NodeServiceCapability{
 			{
@@ -71,8 +71,8 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	readOnly := false
 	accessMode := req.VolumeCapability.AccessMode.Mode
 	if accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY {
-	    klog.Infof("Volume is ReadOnlyMany")
-	    readOnly=true
+		klog.Infof("Volume is ReadOnlyMany")
+		readOnly = true
 	}
 	cap := req.GetVolumeCapability()
 	isBlock := cap.GetBlock() != nil
