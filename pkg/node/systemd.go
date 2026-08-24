@@ -39,6 +39,14 @@ func startUblkUnit(volumeID, binary string, args []string, env []string, dir str
 	unitName := ublkUnitName(volumeID)
 	execArgs := append([]string{binary}, args...)
 
+	// Best-effort: a prior instance of this unit that exhausted
+	// StartLimitBurst (see Restart= below) is left in `failed` state by
+	// systemd until explicitly acknowledged -- StartTransientUnit then
+	// refuses to reuse the name ("already loaded or has a fragment
+	// file"), permanently blocking this volume from ever starting again.
+	// A unit that isn't failed (or doesn't exist yet) makes this a no-op.
+	_ = conn.ResetFailedUnitContext(ctx, unitName)
+
 	props := []dbus.Property{
 		dbus.PropDescription(fmt.Sprintf("niova-ublk daemon for volume %s", volumeID)),
 		dbus.PropType("simple"),
@@ -46,6 +54,16 @@ func startUblkUnit(volumeID, binary string, args []string, env []string, dir str
 		dbus.PropSlice(ublkSystemdSlice),
 		{Name: "Environment", Value: godbus.MakeVariant(env)},
 		{Name: "WorkingDirectory", Value: godbus.MakeVariant(dir)},
+		// Bring a crashed daemon back on its own: with niova-ublk run
+		// with -r (UBLK_F_USER_RECOVERY), the kernel keeps the ublk
+		// device quiesced-and-waiting across a daemon death instead of
+		// tearing it down, so a respawn is what actually lets the
+		// volume recover instead of hanging forever. Rate-limited so a
+		// persistently-crashing daemon doesn't loop forever.
+		{Name: "Restart", Value: godbus.MakeVariant("on-failure")},
+		{Name: "RestartUSec", Value: godbus.MakeVariant(uint64(2 * time.Second / time.Microsecond))},
+		{Name: "StartLimitIntervalUSec", Value: godbus.MakeVariant(uint64(5 * time.Minute / time.Microsecond))},
+		{Name: "StartLimitBurst", Value: godbus.MakeVariant(uint32(5))},
 	}
 
 	resultChan := make(chan string, 1)
@@ -73,6 +91,58 @@ func startUblkUnit(volumeID, binary string, args []string, env []string, dir str
 
 	klog.Infof("Started niova-ublk as systemd unit %s (pid %d) for volume %s", unitName, pid, volumeID)
 	return int(pid), nil
+}
+
+// runHostCommand runs a short-lived command to completion as a transient
+// oneshot systemd unit on the host, the same way startUblkUnit runs
+// niova-ublk itself. Needed for host-only tools like the ublk CLI: the
+// node-plugin container doesn't reliably have a working copy of their
+// runtime (shared libraries staged into the image can drift or fail to
+// resolve there), while the host environment niova-ublk already runs in
+// does. unitSuffix must be unique per logical caller (e.g. volumeID) so
+// concurrent/repeated calls don't collide on the same transient unit name.
+func runHostCommand(unitSuffix, binary string, args []string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	conn, err := dbus.NewSystemdConnectionContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to connect to systemd: %v", err)
+	}
+	defer conn.Close()
+
+	unitName := fmt.Sprintf("niova-run-%s.service", unitSuffix)
+	execArgs := append([]string{binary}, args...)
+
+	props := []dbus.Property{
+		dbus.PropDescription(fmt.Sprintf("%s %v", binary, args)),
+		dbus.PropType("oneshot"),
+		dbus.PropExecStart(execArgs, true),
+	}
+
+	resultChan := make(chan string, 1)
+	if _, err := conn.StartTransientUnitContext(ctx, unitName, "replace", props, resultChan); err != nil {
+		return fmt.Errorf("failed to start transient unit %s: %v", unitName, err)
+	}
+
+	var result string
+	select {
+	case result = <-resultChan:
+	case <-ctx.Done():
+		return fmt.Errorf("timed out waiting for %s to run %s %v", unitName, binary, args)
+	}
+
+	if result != "done" {
+		detail := ""
+		if prop, perr := conn.GetServicePropertyContext(ctx, unitName, "ExecMainStatus"); perr == nil {
+			detail = fmt.Sprintf(" (ExecMainStatus=%v)", prop.Value.Value())
+		}
+		_ = conn.ResetFailedUnitContext(ctx, unitName)
+		return fmt.Errorf("%s %v failed on host: job result %q%s", binary, args, result, detail)
+	}
+
+	klog.Infof("Ran %s %v on host via unit %s", binary, args, unitName)
+	return nil
 }
 
 // stopUblkUnit stops the systemd unit for volumeID, if it exists. systemd
