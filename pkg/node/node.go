@@ -71,9 +71,10 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	readOnly := false
 	accessMode := req.VolumeCapability.AccessMode.Mode
 	if accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY {
-	    klog.Infof("Volume is ReadOnlyMany")
-	    readOnly=true
+		klog.Infof("Volume is ReadOnlyMany")
+		readOnly = true
 	}
+	recoverymode := req.GetVolumeContext()[types.UblkRecovery]
 	cap := req.GetVolumeCapability()
 	isBlock := cap.GetBlock() != nil
 	mode := types.MOUNT_MODE
@@ -106,7 +107,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
-	ublkDevicePath, ublkpid, err := ns.ublkManager.CreateUblkDevice(volumeID, volumeSizeStr, readOnly)
+	ublkDevicePath, ublkpid, err := ns.ublkManager.CreateUblkDevice(volumeID, volumeSizeStr, recoverymode, readOnly)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create ublk device: %v", err))
 	}
