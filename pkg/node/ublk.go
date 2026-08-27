@@ -29,15 +29,15 @@ type UblkManager struct {
 func NewUblkManager() *UblkManager {
 	return &UblkManager{
 		ublkBinary: "niova-ublk", // Assuming niova-ublk is in PATH
-		ldLib: ldLibraryPath,
+		ldLib:      ldLibraryPath,
 	}
 }
 
 func (um *UblkManager) getBinaryPath() {
-    if path := os.Getenv("NIOVA_BIN_PATH"); path != "" {
-	um.ublkBinary = fmt.Sprintf("%s/bin/niova-ublk", path)
-	um.ldLib = fmt.Sprintf("%s/lib",path)
-    }
+	if path := os.Getenv("NIOVA_BIN_PATH"); path != "" {
+		um.ublkBinary = fmt.Sprintf("%s/bin/niova-ublk", path)
+		um.ldLib = fmt.Sprintf("%s/lib", path)
+	}
 }
 
 // CreateUblkDevice starts niova-ublk for the given volume as a transient
