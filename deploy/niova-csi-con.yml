@@ -19,7 +19,7 @@ spec:
       hostPID: true
       containers:
         - name: niova-csi
-          image: paro1618/niova-csi:controller-v11
+          image: paro1618/niova-csi:controller-v12
           securityContext:
             privileged: true
             capabilities:
@@ -32,14 +32,14 @@ spec:
           imagePullPolicy: Always
           command: ["/bin/sh", "-c"]
           args:
-            - ulimit -l unlimited && exec /opt/niova/niova-block-csi-controller -driver-name=csi.niova.com -version=0.1.0 -node-id=$(NODE_ID) -endpoint=unix:///csi/custom2.sock -configpath=/etc/niova/gossipNodes -r ${RUN_ID} -Cplog=/niova-block/niova-csi.log
+            - ulimit -l unlimited && exec /opt/niova/niova-block-csi-controller -driver-name=csi.niova.com -version=0.1.0 -node-id=$(NODE_ID) -endpoint=unix:///csi/custom2.sock -configpath=/etc/niova/gossipNodes -r ${NIOVA_GOSSIP_KEY} -Cplog=/niova-block/niova-csi.log
           env:
             - name: NODE_ID
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            - name: RUN_ID
-              value: "dummy"
+            - name: NIOVA_BIN_PATH
+              value: ""
             - name: NIOVA_GOSSIP_PATH
               value: "/etc/niova/gossipNodes"
             - name: NIOVA_GOSSIP_KEY
@@ -47,7 +47,7 @@ spec:
             - name: NIOVA_BLOCK_CP_AUTH_USERNAME
               value: "admin"
             - name: NIOVA_BLOCK_CP_AUTH_SECRET
-              value: "test-admin-secret-123"
+              value: "admin"
             - name: NIOVA_BLOCK_MDSVC_GET_CHUNKS_LIMIT
               value: "256"
           terminationMessagePath: /tmp/termination-log

@@ -23,11 +23,20 @@ var (
 
 type UblkManager struct {
 	ublkBinary string
+	ldLib      string
 }
 
 func NewUblkManager() *UblkManager {
 	return &UblkManager{
 		ublkBinary: "niova-ublk", // Assuming niova-ublk is in PATH
+		ldLib:      ldLibraryPath,
+	}
+}
+
+func (um *UblkManager) getBinaryPath() {
+	if path := os.Getenv("NIOVA_BIN_PATH"); path != "" {
+		um.ublkBinary = fmt.Sprintf("%s/bin/niova-ublk", path)
+		um.ldLib = fmt.Sprintf("%s/lib", path)
 	}
 }
 
@@ -40,7 +49,8 @@ func NewUblkManager() *UblkManager {
 // (stopping it again goes through stopUblkUnit(volumeID), not the pid).
 func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string, readOnly bool) (string, int, error) {
 	klog.Infof("Creating ublk device for volume %s", volumeID)
-
+	// get niova binary path
+	um.getBinaryPath()
 	args := []string{
 		"-t", "cp",
 		"-v", volumeID,
@@ -54,7 +64,7 @@ func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string, readOnly bo
 		args = append(args, "-R")
 	}
 	env := []string{
-		fmt.Sprintf("LD_LIBRARY_PATH=%s", ldLibraryPath),
+		fmt.Sprintf("LD_LIBRARY_PATH=%s", um.ldLib),
 		fmt.Sprintf("NIOVA_GOSSIP_PATH=%s", os.Getenv(types.NiovaGossipPath)),
 		fmt.Sprintf("NIOVA_GOSSIP_KEY=%s", os.Getenv(types.NiovaGossipKey)),
 		fmt.Sprintf("NIOVA_BLOCK_CP_AUTH_USERNAME=%s", os.Getenv(types.NiovaUserName)),
