@@ -27,13 +27,13 @@ type NodeServer struct {
 	config       *config.ConfigManager
 }
 
-func NewNodeServer(nodeID string, configManager *config.ConfigManager) *NodeServer {
+func NewNodeServer(nodeID string, clientid string, configManager *config.ConfigManager) *NodeServer {
 	return &NodeServer{
 		nodeID: nodeID,
 		Node: &types.Node{
 			VolMap: make(map[string]*types.NodeVolume),
 		},
-		ublkManager:  NewUblkManager(),
+		ublkManager:  NewUblkManager(clientid),
 		mountManager: NewMountManager(),
 		caps: []*csi.NodeServiceCapability{
 			{
