@@ -44,7 +44,8 @@ func main() {
 
 	// Create config manager
 	configManager := config.NewConfigManager(*ConfigPath)
-	c := cpClient.InitCliCFuncs(uuid.New().String(), *raftID, *ConfigPath, *Cplog)
+	clientID := uuid.New().String()
+	c := cpClient.InitCliCFuncs(clientID, *raftID, *ConfigPath, *Cplog)
 	u, teardown := config.StartAuthClient(*raftID, *ConfigPath)
 	if u == nil {
 		klog.Fatalf("Failed to start Authentication client")
@@ -63,7 +64,7 @@ func main() {
 	}
 	klog.Infof("login to control plane is sucessful")
 	// Create CSI driver
-	csiDriver := driver.NewCSIDriver(*driverName, *version, *nodeID, *endpoint, configManager)
+	csiDriver := driver.NewCSIDriver(*driverName, *version, *nodeID, clientID, *endpoint, configManager)
 
 	// Setup node server
 	csiDriver.SetupNodeServer()
