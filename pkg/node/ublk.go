@@ -5,9 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/niova-block-csi/pkg/types"
@@ -26,60 +24,110 @@ var (
 
 type UblkManager struct {
 	ublkBinary string
+	ClientID   string
+	ldLib      string
 }
 
-func NewUblkManager() *UblkManager {
+func NewUblkManager(clientid string) *UblkManager {
 	return &UblkManager{
 		ublkBinary: "niova-ublk", // Assuming niova-ublk is in PATH
+		ClientID:   clientid,
+		ldLib:      ldLibraryPath,
 	}
 }
 
-// CreateUblkDevice starts a niova-ublk daemon for the given volume.
-// Returns (ublkDevicePath, pid, error) where ublkDevicePath is the stable
-// /dev/disk/by-uuid/<volumeID> symlink created by 61-niova-ublk.rules.
-func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string) (string, int, error) {
-	klog.Infof("Creating ublk device for volume %s", volumeID)
+func (um *UblkManager) getBinaryPath() {
+	if path := os.Getenv("NIOVA_BIN_PATH"); path != "" {
+		um.ublkBinary = fmt.Sprintf("%s/bin/niova-ublk", path)
+		um.ldLib = fmt.Sprintf("%s/lib", path)
+	}
+}
 
+// CreateUblkDevice starts niova-ublk for the given volume as a transient
+// systemd unit on the host (see systemd.go) rather than as a child of this
+// container, so it survives node-plugin pod restarts. Returns
+// (ublkDevicePath, pid, error) where ublkDevicePath is the stable
+// /dev/disk/by-uuid/<volumeID> symlink created by 61-niova-ublk.rules, and
+// pid is the host-side niova-ublk process, kept only for observability
+// (stopping it again goes through stopUblkUnit(volumeID), not the pid).
+func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string, readOnly bool) (string, int, error) {
+	klog.Infof("Creating ublk device for volume %s", volumeID)
+	// get niova binary path
+	um.getBinaryPath()
 	args := []string{
 		"-t", "cp",
 		"-v", volumeID,
+		"-u", um.ClientID,
 		"-q", QUEUEDEPTH,
 		"-b", MAXBUFSIZE,
 		"-T",
+		"-r",
 	}
-
-	cmd := exec.Command(um.ublkBinary, args...)
-	cmd.Env = append(cmd.Env,
-		fmt.Sprintf("LD_LIBRARY_PATH=%s", ldLibraryPath),
+	if readOnly {
+		args = append(args, "-R")
+	}
+	env := []string{
+		fmt.Sprintf("LD_LIBRARY_PATH=%s", um.ldLib),
 		fmt.Sprintf("NIOVA_GOSSIP_PATH=%s", os.Getenv(types.NiovaGossipPath)),
 		fmt.Sprintf("NIOVA_GOSSIP_KEY=%s", os.Getenv(types.NiovaGossipKey)),
 		fmt.Sprintf("NIOVA_BLOCK_CP_AUTH_USERNAME=%s", os.Getenv(types.NiovaUserName)),
 		fmt.Sprintf("NIOVA_BLOCK_CP_AUTH_SECRET=%s", os.Getenv(types.NiovaUserSecret)),
-	)
-	cmd.Dir = workingDir
-	if err := cmd.Start(); err != nil {
+		fmt.Sprintf("NIOVA_BLOCK_UBLK_UNIFIED=%s", os.Getenv(types.NiovaUblkUnified)),
+		fmt.Sprintf("NIOVA_BLOCK_MDSVC_GET_CHUNKS_LIMIT=%s", os.Getenv(types.NiovaMdsvcChunkLimit)),
+	}
+
+	klog.Infof("ENV variables %s: %s and %s: %s, %s: %s and %s: %s, %s: %s, %s: %s ", types.NiovaGossipPath, os.Getenv(types.NiovaGossipPath), types.NiovaGossipKey, os.Getenv(types.NiovaGossipKey), types.NiovaUserName, os.Getenv(types.NiovaUserName), types.NiovaUserSecret, os.Getenv(types.NiovaUserSecret), types.NiovaUblkUnified, os.Getenv(types.NiovaUblkUnified), types.NiovaMdsvcChunkLimit, os.Getenv(types.NiovaMdsvcChunkLimit))
+
+	pid, err := startUblkUnit(volumeID, um.ublkBinary, args, env, workingDir)
+	if err != nil {
 		return "", -1, status.Errorf(codes.Internal, "failed to start ublk: %v", err)
 	}
 
-	klog.Infof("ENV variables %s: %s and %s: %s, %s: %s and %s: %s ", types.NiovaGossipPath, os.Getenv(types.NiovaGossipPath), types.NiovaGossipKey, os.Getenv(types.NiovaGossipKey), types.NiovaUserName, os.Getenv(types.NiovaUserName), types.NiovaUserSecret, os.Getenv(types.NiovaUserSecret))
-	klog.Infof("Executing command: %s", cmd.String())
-
 	ublkDevicePath, err := waitForByUUIDLink(volumeID)
 	if err != nil {
-		cmd.Process.Kill()
+		if stopErr := stopUblkUnit(volumeID); stopErr != nil {
+			klog.Warningf("failed to stop ublk unit %s after device wait failure: %v", ublkUnitName(volumeID), stopErr)
+		}
 		return "", -1, err
 	}
 
 	klog.Infof("Successfully created ublk device %s for volume %s", ublkDevicePath, volumeID)
-	return ublkDevicePath, cmd.Process.Pid, nil
+	return ublkDevicePath, pid, nil
 }
 
-func (um *UblkManager) DeleteUblkDevice(volumeID, ublkDevicePath string, ublkPid int) error {
+// DeleteUblkDevice stops the host-side systemd unit for volumeID, if still
+// running, and detaches the device from the ublk kernel driver.
+func (um *UblkManager) DeleteUblkDevice(volumeID, ublkDevicePath string) error {
 	klog.Infof("Deleting ublk device %s for volume %s", ublkDevicePath, volumeID)
 
-	err := killByNameIfExists(ublkPid, ublkDevicePath)
-	if err != nil {
+	// Resolve the by-uuid symlink to its ublkbN id before touching the
+	// unit: once niova-ublk exits (next step), a udev "remove" event can
+	// take the symlink down with it, so resolving afterwards would race.
+	// `ublk del` itself (UBLK_CMD_STOP_DEV + UBLK_CMD_DEL_DEV) doesn't
+	// care whether the daemon is still alive, already exited, or sitting
+	// quiesced mid-recovery, so it's safe to run after stopUblkUnit.
+	var id string
+	if ublkDevicePath != "" {
+		var err error
+		id, err = resolveUblkID(ublkDevicePath)
+		if err != nil {
+			return fmt.Errorf("failed to resolve ublk id for %s: %v", ublkDevicePath, err)
+		}
+	}
+
+	if err := stopUblkUnit(volumeID); err != nil {
 		return fmt.Errorf("failed to delete ublk device: %v", err)
+	}
+
+	if id != "" {
+		klog.Infof("Deleting the ublk %s", ublkDevicePath)
+		// Run on the host via systemd, not exec.Command in this
+		// container: the ublk CLI's runtime (libublksrv/liburing) isn't
+		// reliably available/resolvable inside the node-plugin image,
+		// while the host environment niova-ublk itself runs in is.
+		if err := runHostCommand(volumeID, "ublk", []string{"del", "-n", id}); err != nil {
+			return fmt.Errorf("failed to delete ublk %s: %v", ublkDevicePath, err)
+		}
 	}
 
 	klog.Infof("Successfully deleted ublk device %s for volume %s", ublkDevicePath, volumeID)
@@ -111,7 +159,7 @@ func (um *UblkManager) extractUblkID(ublkDevicePath string) string {
 // The symlink appearing is an implicit readiness signal: niova-ublk only fires
 // the uevent after niova_ublk_start() completes successfully.
 func waitForByUUIDLink(volumeID string) (string, error) {
-	path := "/dev/disk/by-uuid/" + volumeID
+	path := types.UblkByUUIDPath(volumeID)
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		if _, err := os.Lstat(path); err == nil {
@@ -157,36 +205,18 @@ func (um *UblkManager) GetUblkDeviceInfo(ublkDevicePath string) (map[string]stri
 	return info, nil
 }
 
-
-func killByNameIfExists(pid int, ublkDevicePath string) error {
-	// Step 1: Check if the process exists and is accessible
-	err := syscall.Kill(pid, 0)
+// resolveUblkID follows the /dev/disk/by-uuid/<volumeID> symlink down to the
+// real ublkbN device node and returns its numeric minor, as required by
+// `ublk del -n <id>`. filepath.Base of the symlink itself is the volume
+// UUID, not an ublkbN name, so it must be resolved first.
+func resolveUblkID(ublkDevicePath string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(ublkDevicePath)
 	if err != nil {
-		switch err {
-		case syscall.ESRCH:
-			klog.Infof("Process %d does not exist.", pid)
-			return nil // Not an error — nothing to kill
-		case syscall.EPERM:
-			klog.Infof("Process %d exists but you don't have permission to kill it.", pid)
-			return nil // Not an error — just can't kill it
-		default:
-			return fmt.Errorf("error checking PID %d: %v", pid, err)
-		}
+		return "", err
 	}
-
-	// Step 2: Kill the process
-	klog.Infof("Killing process with PID %d...", pid)
-	killCmd := exec.Command("kill", "-15", strconv.Itoa(pid))
-	if err := killCmd.Run(); err != nil {
-		return fmt.Errorf("failed to kill process %d: %v", pid, err)
+	base := filepath.Base(resolved)
+	if !strings.HasPrefix(base, "ublkb") {
+		return "", fmt.Errorf("unexpected ublk device name %q resolved from %q", base, ublkDevicePath)
 	}
-	klog.Infof("Deleteing the ublk %s", ublkDevicePath)
-	base := filepath.Base(ublkDevicePath)
-	id := strings.TrimPrefix(base, "ublkb")
-	dublk := exec.Command("ublk", "del", "-n", id)
-	if err := dublk.Run(); err != nil {
-		return fmt.Errorf("failed to delete ublk %s: %v", ublkDevicePath, err)
-	}
-	klog.Infof("Successfully killed process %d.", pid)
-	return nil
+	return strings.TrimPrefix(base, "ublkb"), nil
 }

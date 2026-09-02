@@ -20,21 +20,23 @@ type CSIDriver struct {
 	name          string
 	version       string
 	nodeID        string
+	clientID      string
 	endpoint      string
 	configManager *config.ConfigManager
 
 	controllerServer *controller.ControllerServer
-	nodeServer       *node.NodeServer
+	NodeServer       *node.NodeServer
 	identityServer   *IdentityServer
 
 	server *grpc.Server
 }
 
-func NewCSIDriver(name, version, nodeID, endpoint string, configManager *config.ConfigManager) *CSIDriver {
+func NewCSIDriver(name, version, nodeID, clientid, endpoint string, configManager *config.ConfigManager) *CSIDriver {
 	return &CSIDriver{
 		name:          name,
 		version:       version,
 		nodeID:        nodeID,
+		clientID:      clientid,
 		endpoint:      endpoint,
 		configManager: configManager,
 	}
@@ -47,7 +49,7 @@ func (d *CSIDriver) SetupControllerServer() {
 
 func (d *CSIDriver) SetupNodeServer() {
 	klog.Infof("Setting up node server")
-	d.nodeServer = node.NewNodeServer(d.nodeID)
+	d.NodeServer = node.NewNodeServer(d.nodeID, d.clientID, d.configManager)
 }
 
 func (d *CSIDriver) SetupIdentityServer() {
@@ -57,9 +59,6 @@ func (d *CSIDriver) SetupIdentityServer() {
 
 func (d *CSIDriver) Run(ctx context.Context) error {
 	klog.Infof("Starting CSI driver %s version %s", d.name, d.version)
-
-	// Setup identity server (always required)
-	d.SetupIdentityServer()
 
 	// Parse endpoint
 	proto, addr, err := parseEndpoint(d.endpoint)
@@ -98,8 +97,8 @@ func (d *CSIDriver) Run(ctx context.Context) error {
 	}
 
 	// Register node server if configured
-	if d.nodeServer != nil {
-		csi.RegisterNodeServer(d.server, d.nodeServer)
+	if d.NodeServer != nil {
+		csi.RegisterNodeServer(d.server, d.NodeServer)
 		klog.Info("Node server registered")
 	}
 
@@ -165,13 +164,6 @@ func (is *IdentityServer) GetPluginCapabilities(ctx context.Context, req *csi.Ge
 				Type: &csi.PluginCapability_Service_{
 					Service: &csi.PluginCapability_Service{
 						Type: csi.PluginCapability_Service_CONTROLLER_SERVICE,
-					},
-				},
-			},
-			{
-				Type: &csi.PluginCapability_Service_{
-					Service: &csi.PluginCapability_Service{
-						Type: csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS,
 					},
 				},
 			},

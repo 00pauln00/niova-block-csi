@@ -12,11 +12,13 @@ spec:
       labels:
         app: niova-csi-node
     spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       serviceAccountName: niova-csi-sa
       hostPID: true
       containers:
         - name: niova-csi
-          image: paro1618/niova-csi:node-v4
+          image: paro1618/niova-csi:node-v12
           securityContext:
             privileged: true
             capabilities:
@@ -29,17 +31,27 @@ spec:
           imagePullPolicy: Always
           command: ["/bin/sh", "-c"]
           args:
-            - ulimit -l unlimited && exec /opt/niova/niova-block-csi-node -driver-name=csi.niova.com -version=0.1.0 -node-id=$(NODE_ID) -endpoint=unix:///csi/custom.sock
+            - ulimit -l unlimited && exec /opt/niova/niova-block-csi-node -driver-name=csi.niova.com -version=0.1.0 -node-id=$(NODE_ID) -endpoint=unix:///csi/custom.sock -configpath=$(NIOVA_GOSSIP_PATH) -r $(NIOVA_GOSSIP_KEY)
           env:
             - name: NODE_ID
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: NIOVA_BIN_PATH
+              value: ""
             - name: NIOVA_GOSSIP_PATH
               value: "/etc/niova/gossipNodes"
             - name: NIOVA_GOSSIP_KEY
-              value: "5c587ba3-0f41-4476-b444-ffc6bba95ff0"
-          terminationMessagePath: /tmp/termination-log
+              value: "dummy"
+            - name: NIOVA_BLOCK_CP_AUTH_USERNAME
+              value: "admin"
+            - name: NIOVA_BLOCK_CP_AUTH_SECRET
+              value: "admin"
+            - name: NIOVA_BLOCK_UBLK_UNIFIED
+              value: "0"
+            - name: NIOVA_BLOCK_MDSVC_GET_CHUNKS_LIMIT
+              value: "256"
+          terminationMessagePath: /termination-log
           volumeMounts:
             - name: plugin-dir
               mountPath: /csi
@@ -55,9 +67,9 @@ spec:
               mountPath: /sys
             - name: host-mount
               mountPath: /run
+            - name: lib-modules
+              mountPath: /lib/modules
               mountPropagation: Bidirectional
-            - name: lib
-              mountPath: /lib
             - name: kubelet-dir
               mountPath: /var/lib/kubelet/plugins
               mountPropagation: Bidirectional
@@ -78,7 +90,18 @@ spec:
             - name: usr-bin
               mountPath: /usr/bin
               mountPropagation: HostToContainer
-
+            - name: usr-lib
+              mountPath: /usr/lib
+              mountPropagation: HostToContainer
+            - name: lib
+              mountPath: /lib
+              mountPropagation: HostToContainer
+            - name: lib64
+              mountPath: /lib64
+              mountPropagation: HostToContainer
+            - name: tmp-dir
+              mountPath: /tmp
+              mountPropagation: Bidirectional
         - name: driver-registrar
           image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.8.0
           args:
@@ -112,9 +135,9 @@ spec:
         - name: host-mount
           hostPath:
             path: /run
-        - name: lib
+        - name: lib-modules
           hostPath:
-            path: /lib
+            path: /lib/modules
         - name: kubelet-dir
           hostPath:
             path: /var/lib/kubelet/plugins
@@ -136,4 +159,16 @@ spec:
         - name: usr-bin
           hostPath:
             path: /usr/bin
+        - name: usr-lib
+          hostPath:
+            path: /usr/lib
+        - name: lib
+          hostPath:
+            path: /lib
+        - name: lib64
+          hostPath:
+            path: /lib64
+        - name: tmp-dir
+          hostPath:
+            path: /tmp
 

@@ -50,7 +50,6 @@ func main() {
 	}
 
 	configManager.K8sClient = k8sClient
-
 	c := cpClient.InitCliCFuncs(uuid.New().String(), *raftID, *ConfigPath, *Cplog)
 	u, teardown := config.StartAuthClient(*raftID, *ConfigPath)
 	if u == nil {
@@ -70,7 +69,7 @@ func main() {
 	}
 	klog.Infof("login to control plane is sucessful")
 	// Create CSI driver
-	csiDriver := driver.NewCSIDriver(*driverName, *version, *nodeID, *endpoint, configManager)
+	csiDriver := driver.NewCSIDriver(*driverName, *version, *nodeID, "", *endpoint, configManager)
 
 	// Setup controller server
 	csiDriver.SetupControllerServer()

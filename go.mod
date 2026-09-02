@@ -9,6 +9,8 @@ replace github.com/00pauln00/niova-pumicedb/go => ./niova-mdsvc/modules/niova-pu
 require (
 	github.com/00pauln00/niova-mdsvc v0.0.0-20250828071051-291fb9f7747f
 	github.com/container-storage-interface/spec v1.8.0
+	github.com/coreos/go-systemd/v22 v22.7.0
+	github.com/godbus/dbus/v5 v5.1.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/onsi/ginkgo/v2 v2.13.0
@@ -75,7 +77,6 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/api v0.27.0-alpha.3 // indirect
-	k8s.io/apimachinery v0.27.0-alpha.3 // indirect
 	k8s.io/kube-openapi v0.0.0-20230308215209-15aac26d736a // indirect
 	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect

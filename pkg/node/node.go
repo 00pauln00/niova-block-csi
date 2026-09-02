@@ -10,6 +10,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/google/uuid"
+	"github.com/niova-block-csi/pkg/config"
 	"github.com/niova-block-csi/pkg/types"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -18,20 +19,21 @@ import (
 
 type NodeServer struct {
 	nodeID       string
-	node         *types.Node
+	Node         *types.Node
 	ublkManager  *UblkManager
 	mountManager *MountManager
 	mutex        sync.RWMutex
 	caps         []*csi.NodeServiceCapability
+	config       *config.ConfigManager
 }
 
-func NewNodeServer(nodeID string) *NodeServer {
+func NewNodeServer(nodeID string, clientid string, configManager *config.ConfigManager) *NodeServer {
 	return &NodeServer{
 		nodeID: nodeID,
-		node: &types.Node{
+		Node: &types.Node{
 			VolMap: make(map[string]*types.NodeVolume),
 		},
-		ublkManager:  NewUblkManager(),
+		ublkManager:  NewUblkManager(clientid),
 		mountManager: NewMountManager(),
 		caps: []*csi.NodeServiceCapability{
 			{
@@ -49,6 +51,7 @@ func NewNodeServer(nodeID string) *NodeServer {
 				},
 			},
 		},
+		config: configManager,
 	}
 }
 
@@ -64,6 +67,12 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 	if req.GetVolumeCapability() == nil {
 		return nil, status.Error(codes.InvalidArgument, "Volume capabilities cannot be empty")
+	}
+	readOnly := false
+	accessMode := req.VolumeCapability.AccessMode.Mode
+	if accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY {
+		klog.Infof("Volume is ReadOnlyMany")
+		readOnly = true
 	}
 	cap := req.GetVolumeCapability()
 	isBlock := cap.GetBlock() != nil
@@ -81,17 +90,23 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid volume size: %v", err))
 	}
 
-	// if this volume is already staged, return success.
+	// If this volume is already staged with a live ublk device, return
+	// success. Guards against ConfigManager.UpdateNodeVolumeMap having
+	// failed to confirm a live backend for this volume ID (e.g. the udev
+	// symlink check raced with niova-ublk still coming up) and left a bare
+	// VolID-only entry behind — that's not actually staged locally, so it
+	// must not short-circuit here.
 	// Only a read lock is needed here since we are not modifying the map.
 	ns.mutex.RLock()
-	_, alreadyStaged := ns.node.VolMap[volumeID]
+	existing, alreadyStaged := ns.Node.VolMap[volumeID]
+	alreadyStaged = alreadyStaged && existing.UblkPath != ""
 	ns.mutex.RUnlock()
 	if alreadyStaged {
 		klog.Infof("NodeStageVolume: volume %s is already staged, returning success", volumeID)
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
-	ublkDevicePath, ublkpid, err := ns.ublkManager.CreateUblkDevice(volumeID, volumeSizeStr)
+	ublkDevicePath, ublkpid, err := ns.ublkManager.CreateUblkDevice(volumeID, volumeSizeStr, readOnly)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create ublk device: %v", err))
 	}
@@ -108,7 +123,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		// can take seconds; no shared state, no lock needed).
 		if err := ns.mountManager.FormatAndMountDevice(ublkDevicePath, stagingPath, fsType); err != nil {
 			// Cleanup ublk device on failure
-			ns.ublkManager.DeleteUblkDevice(volumeID, ublkDevicePath, ublkpid)
+			ns.ublkManager.DeleteUblkDevice(volumeID, ublkDevicePath)
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to mount device: %v", err))
 		}
 	}
@@ -117,7 +132,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	volUUID, err := uuid.Parse(volumeID)
 	if err != nil {
 		klog.Errorf("Failed to parse volume ID %s: %v", volumeID, err)
-		ns.ublkManager.DeleteUblkDevice(volumeID, ublkDevicePath, ublkpid)
+		ns.ublkManager.DeleteUblkDevice(volumeID, ublkDevicePath)
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid volume ID format: %v", err))
 	}
 
@@ -132,7 +147,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	// Write lock: only the map insertion needs exclusive access.
 	// All the expensive work above runs concurrently for different volumes.
 	ns.mutex.Lock()
-	ns.node.VolMap[volumeID] = nodeVolume
+	ns.Node.VolMap[volumeID] = nodeVolume
 	ns.mutex.Unlock()
 
 	klog.Infof("Successfully staged volume %s with ublk device %s at %s", volumeID, ublkDevicePath, stagingPath)
@@ -154,7 +169,7 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	stagingPath := req.GetStagingTargetPath()
 
 	ns.mutex.RLock()
-	nodeVol, exists := ns.node.VolMap[volumeID]
+	nodeVol, exists := ns.Node.VolMap[volumeID]
 	ns.mutex.RUnlock()
 
 	if !exists {
@@ -162,18 +177,23 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 		return &csi.NodeUnstageVolumeResponse{}, nil
 	}
 
-	// Unmount from staging path
-	if nodeVol.VolumeMode == types.MOUNT_MODE {
-		if err := ns.mountManager.Unmount(stagingPath); err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to unmount staging path: %v", err))
-		}
+	// Unmount from staging path. Called unconditionally rather than gated
+	// on nodeVol.VolumeMode: VolMap can hold a bare control-plane stub (see
+	// ConfigManager.UpdateNodeVolumeMap) with no VolumeMode recorded, and
+	// Unmount is already a safe no-op when nothing is mounted there.
+	if err := ns.mountManager.Unmount(stagingPath); err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to unmount staging path: %v", err))
 	}
 
-	// Delete ublk device if it exists
-	if nodeVol.UblkPath != "" {
-		if err := ns.ublkManager.DeleteUblkDevice(volumeID, nodeVol.UblkPath, nodeVol.UblkPid); err != nil {
-			klog.Errorf("Failed to delete ublk device %s: %v", nodeVol.UblkPath, err)
-		}
+	// Delete the ublk device. Fall back to the deterministic udev symlink
+	// path when UblkPath wasn't recorded (same stub scenario as above), so
+	// cleanup still runs instead of leaking the host-side systemd unit.
+	ublkPath := nodeVol.UblkPath
+	if ublkPath == "" {
+		ublkPath = types.UblkByUUIDPath(volumeID)
+	}
+	if err := ns.ublkManager.DeleteUblkDevice(volumeID, ublkPath); err != nil {
+		klog.Errorf("Failed to delete ublk device %s: %v", ublkPath, err)
 	}
 
 	// Clean up staging path
@@ -183,7 +203,7 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 
 	// Write lock: remove the entry from the shared map.
 	ns.mutex.Lock()
-	delete(ns.node.VolMap, volumeID)
+	delete(ns.Node.VolMap, volumeID)
 	ns.mutex.Unlock()
 
 	klog.Infof("Successfully unstaged volume %s", volumeID)
@@ -210,7 +230,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	stagingPath := req.GetStagingTargetPath()
 
 	ns.mutex.RLock()
-	nodeVol, exists := ns.node.VolMap[volumeID]
+	nodeVol, exists := ns.Node.VolMap[volumeID]
 	ns.mutex.RUnlock()
 
 	if !exists {
@@ -224,7 +244,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		}
 
 		// Create target file
-		f, err := os.OpenFile(targetPath, os.O_CREATE, 0600)
+		f, err := os.OpenFile(targetPath, os.O_CREATE|os.O_RDWR, 0600)
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
@@ -244,7 +264,6 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	ns.mutex.Lock()
 	nodeVol.TargetPath = targetPath
 	ns.mutex.Unlock()
-
 	klog.Infof("Successfully published volume %s to %s", volumeID, targetPath)
 	return &csi.NodePublishVolumeResponse{}, nil
 }
@@ -264,31 +283,48 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	targetPath := req.GetTargetPath()
 
 	ns.mutex.RLock()
-	nodeVol, exists := ns.node.VolMap[volumeID]
+	nodeVol, exists := ns.Node.VolMap[volumeID]
 	ns.mutex.RUnlock()
 
 	if !exists {
 		klog.Warningf("Volume %s not found in node map, considering it already unpublished", volumeID)
-		return &csi.NodeUnpublishVolumeResponse{}, nil
 	}
 
 	// --- Filesystem / unmount operations: no lock held ---
 	if err := ns.mountManager.Unmount(targetPath); err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to unmount target path: %v", err))
-	}
-
-	if nodeVol.VolumeMode == types.BLOCK_MODE {
-		_ = os.Remove(targetPath)
-	} else {
-		if err := ns.mountManager.CleanupMountPoint(targetPath); err != nil {
-			klog.Warningf("Failed to cleanup target path %s: %v", targetPath, err)
+		if os.IsNotExist(err) {
+			klog.Infof("Target path %s already removed", targetPath)
+		} else {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to unmount target path: %v", err))
 		}
 	}
 
-	// Write lock: clear the TargetPath field on the shared NodeVolume struct.
-	ns.mutex.Lock()
-	nodeVol.TargetPath = ""
-	ns.mutex.Unlock()
+	if exists {
+		// Determine block vs. filesystem mode from the on-disk shape of
+		// targetPath rather than the stored VolumeMode: VolMap can hold a
+		// bare control-plane stub (see ConfigManager.UpdateNodeVolumeMap)
+		// with no VolumeMode recorded. NodePublishVolume always creates a
+		// plain file for block mode (bind-mounting the ublk device onto
+		// it) and a directory for filesystem mode, so stat is authoritative
+		// regardless of what VolMap knows.
+		isDir := false
+		if fi, err := os.Stat(targetPath); err == nil {
+			isDir = fi.IsDir()
+		} else if !os.IsNotExist(err) {
+			klog.Warningf("Failed to stat target path %s to determine volume mode: %v", targetPath, err)
+		}
+		if !isDir {
+			_ = os.Remove(targetPath)
+		} else {
+			if err := ns.mountManager.CleanupMountPoint(targetPath); err != nil {
+				klog.Warningf("Failed to cleanup target path %s: %v", targetPath, err)
+			}
+		}
+		// Write lock: clear the TargetPath field on the shared NodeVolume struct.
+		ns.mutex.Lock()
+		nodeVol.TargetPath = ""
+		ns.mutex.Unlock()
+	}
 
 	klog.Infof("Successfully unpublished volume %s from %s", volumeID, targetPath)
 	return &csi.NodeUnpublishVolumeResponse{}, nil
@@ -306,7 +342,7 @@ func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 	}
 
 	ns.mutex.RLock()
-	nodeVol, ok := ns.node.VolMap[req.GetVolumeId()]
+	nodeVol, ok := ns.Node.VolMap[req.GetVolumeId()]
 	ns.mutex.RUnlock()
 
 	if ok && nodeVol.VolumeMode == types.BLOCK_MODE {

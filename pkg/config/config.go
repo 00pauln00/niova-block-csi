@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -13,6 +14,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/niova-block-csi/pkg/types"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -32,6 +35,17 @@ func NewConfigManager(cpConfigPath string) *ConfigManager {
 	}
 }
 
+func StartAuthClient(raftuuid, raftconfig string) (*userClient.Client, func()) {
+	cfg := userClient.Config{
+		AppUUID:          uuid.New().String(),
+		RaftUUID:         raftuuid,
+		GossipConfigPath: raftconfig,
+	}
+
+	c, tearDown := userClient.New(cfg)
+	return c, tearDown
+}
+
 func NewK8sController() (*kubernetes.Clientset, error) {
 	// Use in-cluster config — works automatically when running inside Kubernetes
 	config, err := rest.InClusterConfig()
@@ -48,15 +62,18 @@ func NewK8sController() (*kubernetes.Clientset, error) {
 	return clientset, nil
 }
 
-func StartAuthClient(raftuuid, raftconfig string) (*userClient.Client, func()) {
-	cfg := userClient.Config{
-		AppUUID:          uuid.New().String(),
-		RaftUUID:         raftuuid,
-		GossipConfigPath: raftconfig,
+func (cm *ConfigManager) NodeExists(nodeID string) (bool, error) {
+	if cm.K8sClient == nil {
+		return false, fmt.Errorf("k8s client is nil")
 	}
-
-	c, tearDown := userClient.New(cfg)
-	return c, tearDown
+	_, err := cm.K8sClient.CoreV1().Nodes().Get(context.Background(), nodeID, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func (cm *ConfigManager) InitNiovaClient(c *cpClient.CliCFuncs, u *userClient.Client) error {
@@ -80,6 +97,7 @@ func (cm *ConfigManager) InitNiovaClient(c *cpClient.CliCFuncs, u *userClient.Cl
 func (cm *ConfigManager) UserLogin() error {
 	klog.Infof("Loging in the user with env-var %s  value %s is applied from environment", types.NiovaUserName, os.Getenv(types.NiovaUserName))
 	klog.Infof("Loging in the user with env-var %s value %s is applied from environment", types.NiovaUserSecret, os.Getenv(types.NiovaUserSecret))
+	klog.Infof("Loging in the user with env-var %s value %s is applied from environment", types.NiovaMdsvcChunkLimit, os.Getenv(types.NiovaMdsvcChunkLimit))
 	token, err := cm.Controller.UserClient.Login(os.Getenv(types.NiovaUserName), os.Getenv(types.NiovaUserSecret))
 	if err != nil {
 		klog.Errorf("Failed to Login admin user", err)
@@ -91,7 +109,7 @@ func (cm *ConfigManager) UserLogin() error {
 }
 
 func (cm *ConfigManager) VerifyTokenExpiryAndReLogin(exp error) error {
-	if errors.Is(exp, jwt.ErrTokenExpired) || strings.Contains(exp.Error(), "token is expired") {
+	if errors.Is(exp, jwt.ErrTokenExpired) || strings.Contains(exp.Error(), "expired") || strings.Contains(exp.Error(), "Invalid Token") {
 		err := cm.UserLogin()
 		if err != nil {
 			return err
@@ -141,15 +159,16 @@ func (cm *ConfigManager) RetryAuth(fn func() error) error {
 	return fmt.Errorf("operation failed after %d retries", types.MAX_RETRY)
 }
 
-func (cm *ConfigManager) AllocVdev(requiredSize int64, filter, entityID, pfsId string) (string, error) {
+func (cm *ConfigManager) AllocVdev(name string, requiredSize int64, filter, entityID, pfsId string) (string, error) {
 	cm.Mutex.RLock()
 	defer cm.Mutex.RUnlock()
 	klog.Infof("Allocate vdev with failure domain: %s", entityID)
 	// TODO: NumReplica should be passed from PVC file.
 	Vdev := &ctlplfl.VdevReq{
-		Vdev: &ctlplfl.VdevCfg{
+		Vdev: &ctlplfl.VdevConfig{
+			Name:       name,
 			Size:       requiredSize,
-			NumReplica: 1,
+			DataBlkCnt: 1,
 			PFSID:      pfsId,
 		},
 		Filter: ctlplfl.Filter{
@@ -192,34 +211,87 @@ func (cm *ConfigManager) RemoveVolume(volumeID string) (string, error) {
 	return resp.ID, nil
 }
 
-func (cm *ConfigManager) GetVolume(volumeID string) (ctlplfl.VdevCfg, error) {
+func (cm *ConfigManager) GetVolume(volumeID string) (ctlplfl.VdevConfig, error) {
 	vdevreq := &ctlplfl.GetReq{
 		ID: volumeID,
 	}
-	var vdevcfg ctlplfl.VdevCfg
+	var vdevcfg ctlplfl.VdevConfig
 	err := cm.RetryAuth(func() error {
 		var err error
-		vdevcfg, err = cm.Controller.Cpclient.GetVdevCfg(vdevreq)
+		vdevcfg, err = cm.Controller.Cpclient.GetVdevConfig(vdevreq)
 		return err
 	})
 	if err != nil {
-		return ctlplfl.VdevCfg{}, err
+		return ctlplfl.VdevConfig{}, err
 	}
 	return vdevcfg, nil
 }
 
-func (cm *ConfigManager) ListVolumes() ([]ctlplfl.VdevCfg, error) {
+// GetVolumeByName looks up a vdev by its CSI volume name instead of its ID.
+// The control plane's GetReq.ID accepts either: a UUID is looked up
+// directly, anything else is resolved as a name via a server-side reverse
+// index. Returns an error whose message is exactly "vdev not found" when
+// no vdev with that name exists.
+func (cm *ConfigManager) GetVolumeByName(name string) (ctlplfl.VdevConfig, error) {
+	return cm.GetVolume(name)
+}
+
+func (cm *ConfigManager) ListVolumes() ([]ctlplfl.VdevConfig, error) {
 	Req := &ctlplfl.GetReq{
 		GetAll: true,
 	}
-	var vdevcfgs []ctlplfl.VdevCfg
+	var vdevcfgs []ctlplfl.VdevConfig
 	err := cm.RetryAuth(func() error {
 		var err error
-		vdevcfgs, err = cm.Controller.Cpclient.GetVdevCfgs(Req)
+		vdevcfgs, err = cm.Controller.Cpclient.GetVdevConfigs(Req)
 		return err
 	})
 	if err != nil {
-		return []ctlplfl.VdevCfg{}, err
+		return []ctlplfl.VdevConfig{}, err
 	}
 	return vdevcfgs, nil
+}
+
+// UpdateNodeVolumeMap seeds node.VolMap at node-plugin startup from the
+// control plane's vdev list. ListVolumes is cluster-wide — the control
+// plane doesn't (yet) track which node a vdev is attached to — so most of
+// what it returns has nothing to do with this node. The deterministic udev
+// symlink niova-ublk creates (types.UblkByUUIDPath) is used as local ground
+// truth instead: only a vdev whose ublk backend is actually running on this
+// host resolves that path, so that's what tells us it belongs here. Vdevs
+// that don't resolve are skipped rather than added as bare stubs.
+func (cm *ConfigManager) UpdateNodeVolumeMap(node *types.Node) error {
+	vdevcfgs, err := cm.ListVolumes()
+	if err != nil {
+		return err
+	}
+
+	if node.VolMap == nil {
+		node.VolMap = make(map[string]*types.NodeVolume)
+	}
+
+	for _, v := range vdevcfgs {
+		volID := v.ID
+
+		ublkPath := types.UblkByUUIDPath(volID)
+		if _, err := os.Stat(ublkPath); err != nil {
+			continue
+		}
+
+		nv, exists := node.VolMap[volID]
+		if !exists {
+			nv = &types.NodeVolume{}
+			node.VolMap[volID] = nv
+		}
+
+		// Update fields from controller config
+		nv.VolID, err = uuid.Parse(v.ID)
+		if err != nil {
+			klog.Errorf("Failed to parse volume ID %s: %v", v.ID, err)
+			return err
+		}
+		nv.UblkPath = ublkPath
+	}
+
+	return nil
 }

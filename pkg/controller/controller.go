@@ -3,13 +3,13 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/niova-block-csi/pkg/config"
 	"github.com/niova-block-csi/pkg/types"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 )
 
@@ -19,31 +19,26 @@ type ControllerServer struct {
 }
 
 func NewControllerServer(configManager *config.ConfigManager) *ControllerServer {
+	implementedRPCs := []csi.ControllerServiceCapability_RPC_Type{
+		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
+		csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
+		csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
+		csi.ControllerServiceCapability_RPC_GET_CAPACITY,
+	}
+	var caps []*csi.ControllerServiceCapability
+	for _, rpcType := range implementedRPCs {
+		caps = append(caps, &csi.ControllerServiceCapability{
+			Type: &csi.ControllerServiceCapability_Rpc{
+				Rpc: &csi.ControllerServiceCapability_RPC{
+					Type: rpcType,
+				},
+			},
+		})
+	}
+
 	return &ControllerServer{
 		config: configManager,
-		caps: []*csi.ControllerServiceCapability{
-			{
-				Type: &csi.ControllerServiceCapability_Rpc{
-					Rpc: &csi.ControllerServiceCapability_RPC{
-						Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
-					},
-				},
-			},
-			{
-				Type: &csi.ControllerServiceCapability_Rpc{
-					Rpc: &csi.ControllerServiceCapability_RPC{
-						Type: csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
-					},
-				},
-			},
-			{
-				Type: &csi.ControllerServiceCapability_Rpc{
-					Rpc: &csi.ControllerServiceCapability_RPC{
-						Type: csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
-					},
-				},
-			},
-		},
+		caps:   caps,
 	}
 }
 
@@ -70,29 +65,36 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if cap.GetMount() == nil && cap.GetBlock() == nil {
 		return nil, status.Error(codes.InvalidArgument, "Unsupported volume capability")
 	}
-	pvcName := req.GetParameters()["pvcName"]
-	pvcNamespace := "default"
-	var filter string
-	var entityId string
-	var pfsId string
-	klog.Infof("Resolved PVC Name: %s, Namespace: %s", pvcName, pvcNamespace)
-	if pvcName != "" {
-		targetPVC, err := cs.config.K8sClient.CoreV1().PersistentVolumeClaims(pvcNamespace).Get(ctx, pvcName, metav1.GetOptions{})
-		if err != nil {
-			klog.Infof("Error in getting PVC %s: %v", pvcName, err)
-			return nil, fmt.Errorf("failed to get PVC %s: %v", pvcName, err)
-		}
 
-		klog.Infof("getting the annotations from k8's")
-		filter = targetPVC.Annotations[types.FailureDomain]
-		entityId = targetPVC.Annotations[types.EntityID]
-		pfsId = targetPVC.Annotations[types.PfsID]
-		klog.Infof("provided Annotations is filter=%s, entityid=%s, pfsId=%s", filter, entityId, pfsId)
-	} else {
-		klog.Infof("No PVC name provided in parameters — proceeding with FD=nil")
+	volumeName := req.GetName()
+
+	// Idempotency: a vdev with this name may already exist from a
+	// previous, possibly retried, CreateVolume call. Return it as-is
+	// instead of allocating a duplicate. Any error from the lookup
+	// (including "not found") is treated as "no existing volume" and
+	// falls through to AllocVdev below.
+	if existing, err := cs.config.GetVolumeByName(volumeName); err == nil {
+		if existing.Size != volumeSize {
+			return nil, status.Error(codes.AlreadyExists,
+				fmt.Sprintf("volume %s already exists with a different capacity", volumeName))
+		}
+		klog.Infof("Volume %s already exists as %s, returning existing volume", volumeName, existing.ID)
+		return &csi.CreateVolumeResponse{
+			Volume: &csi.Volume{
+				VolumeId:      existing.ID,
+				CapacityBytes: existing.Size,
+			},
+		}, nil
 	}
+
+	p := req.GetParameters()
+	fd := p[types.FailureDomain]
+	entityId := p[types.EntityID]
+	pfsId := p[types.PfsID]
+	klog.Infof("failuredomain provided is %s  and entityId provided is %s and  pfsId provided is %s", fd, entityId, pfsId)
+
 	// Allocate Vdev of required size
-	volumeID, err := cs.config.AllocVdev(volumeSize, filter, entityId, pfsId)
+	volumeID, err := cs.config.AllocVdev(volumeName, volumeSize, fd, entityId, pfsId)
 	if err != nil {
 		klog.Errorf("Failed to Allocate Vdev with error : %v", err)
 		return nil, status.Error(codes.ResourceExhausted, err.Error())
@@ -149,8 +151,18 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		return nil, status.Error(codes.InvalidArgument, "Node ID cannot be empty")
 	}
 
-	volumeID := req.GetVolumeId()
+	if req.GetVolumeCapability() == nil {
+		return nil, status.Error(codes.InvalidArgument, "Volume capability cannot be empty")
+	}
 	nodeID := req.GetNodeId()
+	volumeID := req.GetVolumeId()
+	exists, err := cs.config.NodeExists(nodeID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to check node %s: %v", nodeID, err)
+	}
+	if !exists {
+		return nil, status.Errorf(codes.NotFound, "node %s not found", nodeID)
+	}
 
 	// Get volume info
 	cs.config.Mutex.Lock()
@@ -234,7 +246,25 @@ func (cs *ControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 	klog.Infof("ListVolumes: called with args %+v", req)
 
 	var entries []*csi.ListVolumesResponse_Entry
+	// The starting_token is a pagination parameter in the CSI ListVolumes API.
+	// It's used to resume listing volumes from where a previous request left
+	// off when there are many volumes.
+	// Validate starting_token if provided
+	// TODO: Replace the current starting token implementation
+	// with proper pagination handling
+	startingToken := 0
+	if req.GetStartingToken() != "" {
+		token := req.GetStartingToken()
 
+		// Parse the token - must be a valid non-negative integer
+		parsed, err := strconv.Atoi(token)
+		if err != nil || parsed < 0 {
+			return nil, status.Error(codes.Aborted, fmt.Sprintf("invalid starting_token: %s", token))
+		}
+		startingToken = parsed
+	}
+
+	klog.Infof("Using starting_token: %d", startingToken)
 	vols, err := cs.config.ListVolumes()
 	if err != nil {
 		klog.Errorf("Failed to get volumes list from cp: %v", err)
