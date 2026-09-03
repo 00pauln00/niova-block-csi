@@ -27,6 +27,7 @@ const (
 	FailureDomain = "failuredomain"
 	EntityID      = "entityID"
 	PfsID         = "pfsId"
+	UblkRecovery  = "ublkrecovery"
 	MAX_RETRY     = 2
 )
 

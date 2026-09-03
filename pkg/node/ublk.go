@@ -49,7 +49,7 @@ func (um *UblkManager) getBinaryPath() {
 // /dev/disk/by-uuid/<volumeID> symlink created by 61-niova-ublk.rules, and
 // pid is the host-side niova-ublk process, kept only for observability
 // (stopping it again goes through stopUblkUnit(volumeID), not the pid).
-func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string, readOnly bool) (string, int, error) {
+func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string, recovery, readOnly bool) (string, int, error) {
 	klog.Infof("Creating ublk device for volume %s", volumeID)
 	// get niova binary path
 	um.getBinaryPath()
@@ -60,7 +60,9 @@ func (um *UblkManager) CreateUblkDevice(volumeID, volumesize string, readOnly bo
 		"-q", QUEUEDEPTH,
 		"-b", MAXBUFSIZE,
 		"-T",
-		"-r",
+	}
+	if recovery {
+		args = append(args, "-r")
 	}
 	if readOnly {
 		args = append(args, "-R")
